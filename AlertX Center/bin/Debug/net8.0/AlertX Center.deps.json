@@ -1,0 +1,23 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v8.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v8.0": {
+      "AlertX Center/1.0.0": {
+        "runtime": {
+          "AlertX Center.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "AlertX Center/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}
