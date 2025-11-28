@@ -1,0 +1,108 @@
+/* Styles for the upgraded login UI (matches reference screenshot layout) */
+:root{
+  --bg:#98aebf; /* soft blue-gray */
+  --panel:#eaf0f4;
+  --accent:#d7e8ef;
+  --primary:#e8f1f6;
+  --button-blue:#dfeff7;
+  --button-red:#d46b5a;
+}
+
+html,body,#root{height:100%;}
+.lx-background{
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:var(--bg);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+}
+.lx-container{
+  width:820px;
+  max-width:95%;
+  background:transparent;
+  padding:28px 36px;
+  box-sizing:border-box;
+  color:#14232b;
+}
+.lx-logos{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:28px;
+}
+.lx-left-logo{display:flex;align-items:center;gap:14px}
+.lx-left-badge{
+  width:72px;height:72px;border-radius:8px;background:#102233;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:22px
+}
+.lx-left-text{font-size:13px;color:#081826;font-weight:700}
+.lx-main-logo{flex:1;display:flex;align-items:center;justify-content:center}
+.lx-alertx{font-size:44px;font-weight:800;color:#0e3b52;letter-spacing:1px}
+.lx-x{color:#1aa6d6}
+
+/* Logo image styles */
+.lx-left-img{width:96px;height:auto;border-radius:6px;object-fit:contain}
+.lx-main-img{max-height:110px;width:auto;object-fit:contain}
+
+.lx-form{
+  background:rgba(255,255,255,0.06);
+  padding:22px;
+  border-radius:6px;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  align-items:flex-start;
+}
+.lx-label{font-size:14px;margin-left:4px;color:#08202a;font-weight:600}
+.lx-input{width:100%;padding:10px 12px;border-radius:4px;border:1px solid rgba(0,0,0,0.08);background:#fff;box-shadow:inset 0 1px 2px rgba(0,0,0,0.03);font-size:15px}
+.lx-buttons{display:flex;align-items:center;gap:18px;margin-top:10px;width:100%;justify-content:center}
+.lx-clear{background:var(--button-red);color:white;padding:8px 18px;border-radius:4px;border:none;cursor:pointer;box-shadow:0 2px 0 rgba(0,0,0,0.12)}
+.lx-login{background:var(--button-blue);color:#102233;padding:10px 26px;border-radius:4px;border:none;cursor:pointer;min-width:120px}
+
+/* Responsive tweaks */
+@media (max-width:640px){
+  .lx-logos{flex-direction:column;gap:12px;align-items:center}
+  .lx-left-text{display:none}
+  .lx-container{padding:18px}
+}
+
+/* Card, welcome text, input error, toggle, spinner, footer, and decorative blob styles */
+.lx-card{background:rgba(255,255,255,0.95);border-radius:14px;padding:26px;box-shadow:0 20px 40px rgba(8,18,22,0.08);border:1px solid rgba(0,0,0,0.04)}
+.lx-welcome{width:100%;text-align:center;margin-bottom:14px}
+.lx-title{font-size:26px;color:#102233;margin:0 0 6px 0}
+.lx-sub{color:#31525b;margin:0;font-size:14px}
+
+.lx-field{width:100%;position:relative}
+.lx-input{width:100%;padding:12px 14px;border-radius:10px;border:1px solid rgba(0,0,0,0.08);background:#fff;box-shadow:none;font-size:15px}
+.lx-input:focus{outline:none;border-color:#1aa6d6;box-shadow:0 0 0 6px rgba(26,166,214,0.06)}
+.lx-input-error{border-color:#f2a0a0}
+.lx-input-icon{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#d9534f}
+
+.lx-toggle{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:none;background:transparent;cursor:pointer;color:#556}
+.lx-toggle svg{width:18px;height:18px}
+
+.lx-error-text{color:#d9534f;font-size:13px;margin:6px 0 0 4px}
+
+.lx-forgot{width:100%;display:flex;justify-content:flex-end}
+.lx-forgot-btn{background:none;border:none;color:#1a6fb0;cursor:pointer}
+
+.lx-buttons{display:flex;gap:12px;margin-top:12px}
+.lx-clear{background:#ef6b66;color:#fff;padding:10px 16px;border-radius:10px;border:none;cursor:pointer}
+.lx-login{background:linear-gradient(90deg,#1f6fb0,#0fb8d5);color:#fff;padding:10px 18px;border-radius:10px;border:none;cursor:pointer;display:flex;align-items:center;gap:8px}
+.lx-login:disabled{opacity:0.6;cursor:not-allowed}
+
+.lx-spinner{display:inline-block;width:18px;height:18px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:lx-spin 1s linear infinite}
+@keyframes lx-spin{to{transform:rotate(360deg)}}
+
+.lx-footer{margin-top:16px;text-align:center}
+.lx-footer-text{color:#34555c}
+.lx-signup{background:none;border:none;color:#1a6fb0;cursor:pointer}
+
+.lx-bottom-text{text-align:center;margin-top:12px;color:#264449}
+
+/* decorative blobs */
+.lx-blob{position:absolute;border-radius:50%;filter:blur(40px);opacity:0.14;mix-blend-mode:multiply;pointer-events:none}
+.lx-blob--1{width:280px;height:280px;background:#7fb8e6;left:-60px;top:40px}
+.lx-blob--2{width:260px;height:260px;background:#6fe0d8;right:-40px;top:140px}
+.lx-blob--3{width:300px;height:300px;background:#9aa3f0;left:50%;transform:translateX(-50%);bottom:-60px}
+

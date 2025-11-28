@@ -1,0 +1,15 @@
+C:\Users\kmedu\AlertX\AlertX Center\bin\Debug\net8.0-windows\AlertX Center.exe
+C:\Users\kmedu\AlertX\AlertX Center\bin\Debug\net8.0-windows\AlertX Center.deps.json
+C:\Users\kmedu\AlertX\AlertX Center\bin\Debug\net8.0-windows\AlertX Center.runtimeconfig.json
+C:\Users\kmedu\AlertX\AlertX Center\bin\Debug\net8.0-windows\AlertX Center.dll
+C:\Users\kmedu\AlertX\AlertX Center\bin\Debug\net8.0-windows\AlertX Center.pdb
+C:\Users\kmedu\AlertX\AlertX Center\obj\Debug\net8.0-windows\AlertX Center.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\kmedu\AlertX\AlertX Center\obj\Debug\net8.0-windows\AlertX Center.AssemblyInfoInputs.cache
+C:\Users\kmedu\AlertX\AlertX Center\obj\Debug\net8.0-windows\AlertX Center.AssemblyInfo.cs
+C:\Users\kmedu\AlertX\AlertX Center\obj\Debug\net8.0-windows\AlertX Center.csproj.CoreCompileInputs.cache
+C:\Users\kmedu\AlertX\AlertX Center\obj\Debug\net8.0-windows\AlertX Center.sourcelink.json
+C:\Users\kmedu\AlertX\AlertX Center\obj\Debug\net8.0-windows\AlertX Center.dll
+C:\Users\kmedu\AlertX\AlertX Center\obj\Debug\net8.0-windows\refint\AlertX Center.dll
+C:\Users\kmedu\AlertX\AlertX Center\obj\Debug\net8.0-windows\AlertX Center.pdb
+C:\Users\kmedu\AlertX\AlertX Center\obj\Debug\net8.0-windows\AlertX Center.genruntimeconfig.cache
+C:\Users\kmedu\AlertX\AlertX Center\obj\Debug\net8.0-windows\ref\AlertX Center.dll

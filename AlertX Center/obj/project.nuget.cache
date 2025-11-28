@@ -1,8 +1,13 @@
 {
   "version": 2,
-  "dgSpecHash": "wkTpx/AiXfs=",
+  "dgSpecHash": "M/rk66RFSMs=",
   "success": true,
-  "projectFilePath": "C:\\Users\\User\\source\\repos\\AlertX Center\\AlertX Center\\AlertX Center.csproj",
-  "expectedPackageFiles": [],
+  "projectFilePath": "C:\\Users\\kmedu\\AlertX\\AlertX Center\\AlertX Center.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\kmedu\\AlertX\\.nuget\\packages\\microsoft.netcore.app.ref\\8.0.22\\microsoft.netcore.app.ref.8.0.22.nupkg.sha512",
+    "C:\\Users\\kmedu\\AlertX\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\8.0.22\\microsoft.windowsdesktop.app.ref.8.0.22.nupkg.sha512",
+    "C:\\Users\\kmedu\\AlertX\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\8.0.22\\microsoft.aspnetcore.app.ref.8.0.22.nupkg.sha512",
+    "C:\\Users\\kmedu\\AlertX\\.nuget\\packages\\microsoft.netcore.app.host.win-x64\\8.0.22\\microsoft.netcore.app.host.win-x64.8.0.22.nupkg.sha512"
+  ],
   "logs": []
 }
