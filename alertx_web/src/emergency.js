@@ -1,34 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AlertTriangle, Plus, X, Send, ArrowLeft, MapPin, CheckCircle2 } from 'lucide-react';
 import './controlcenter.css';
 import Map from './Map';
 import MapGoogle from './MapGoogle';
 import { useNavigate } from 'react-router-dom';
+import { auth } from './firebase-config';
+import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 export default function EmergencyAlertPage() {
   const navigate = useNavigate();
-  const [emergencyType, setEmergencyType] = useState('Fire');
-  const [customTypes, setCustomTypes] = useState([]);
-  const [newType, setNewType] = useState('');
-  const [message, setMessage] = useState('FIRE WARNING for: No zones selected. Evacuate immediately.');
+  const [emergencyType] = useState('Flood');
+  const [message, setMessage] = useState('');
   const [selectedZones, setSelectedZones] = useState([]);
   const [sending, setSending] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [mapPoints, setMapPoints] = useState([]);
 
-  const defaultTypes = ['Fire', 'Earthquake', 'Flood', 'Medical', 'Security', 'Weather'];
+  const db = getFirestore();
+
+  const defaultTypes = ['Flood'];
   const zones = ['Zone 1', 'Zone 2', 'Zone 3'];
 
-  const addCustomType = () => {
-    if (newType.trim() && !customTypes.includes(newType.trim())) {
-      setCustomTypes([...customTypes, newType.trim()]);
-      setNewType('');
-    }
-  };
-
-  const removeCustomType = (type) => {
-    setCustomTypes(customTypes.filter(t => t !== type));
-  };
+  // custom types removed - emergency type is fixed to 'Flood'
 
   const toggleZone = (zone) => {
     setSelectedZones(prev => 
@@ -41,17 +34,42 @@ export default function EmergencyAlertPage() {
   const clearSelections = () => setSelectedZones([]);
   const clearMessage = () => setMessage('');
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!message.trim() || selectedZones.length === 0) return;
     setSending(true);
-    setTimeout(() => {
-      setSending(false);
+    try {
+      // create alert document in Firestore so backend/clients can broadcast
+      await addDoc(collection(db, 'alerts'), {
+        type: emergencyType,
+        zones: selectedZones,
+        message,
+        mapPoints,
+        createdAt: serverTimestamp(),
+        sentBy: auth?.currentUser?.uid || null,
+        status: 'queued'
+      });
+
+      // small UX delay to mimic previous behaviour
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
-    }, 1500);
+    } catch (err) {
+      // surface error for developer / operator
+      // eslint-disable-next-line no-console
+      console.error('Failed to write alert to Firestore', err);
+      // simple user feedback — you can replace with a nicer UI notification
+      alert('Failed to send alert. Check console for details.');
+    } finally {
+      setSending(false);
+    }
   };
 
-  const allTypes = [...defaultTypes, ...customTypes];
+  const allTypes = [...defaultTypes];
+
+  // auto-generate the emergency message when zones or type change
+  useEffect(() => {
+    const generated = `${emergencyType.toUpperCase()} WARNING for: ${selectedZones.length > 0 ? selectedZones.join(', ') : 'No zones selected'}. Evacuate immediately.`;
+    setMessage(generated);
+  }, [selectedZones, emergencyType]);
 
   return (
     <div className="cc-background">
@@ -69,33 +87,7 @@ export default function EmergencyAlertPage() {
                 <h2 className="text-2xl font-bold cc-card-sub">Type of Emergency:</h2>
               </div>
 
-              <select value={emergencyType} onChange={(e) => setEmergencyType(e.target.value)} className="cc-select">
-                {allTypes.map(type => <option key={type} value={type}>{type}</option>)}
-              </select>
-
-              <div className="mb-4">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Add a Custom Type:</label>
-                <input value={newType} onChange={(e) => setNewType(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && addCustomType()} placeholder="Enter custom emergency type..." className="cc-input" />
-              </div>
-
-              <div className="cc-add-row">
-                <button onClick={() => setNewType('')} className="cc-button-clear">Clear</button>
-                <button onClick={addCustomType} className="cc-button-add"><Plus />Add</button>
-              </div>
-
-              {customTypes.length > 0 && (
-                <div className="mt-4">
-                  <p className="text-sm font-semibold">Custom Types:</p>
-                  <div className="cc-custom-types">
-                    {customTypes.map(type => (
-                      <div key={type} className="cc-chip cc-chip--danger">
-                        <span>{type}</span>
-                        <button onClick={() => removeCustomType(type)} className="cc-chip-remove"><X /></button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <div className="cc-select">{emergencyType}</div>
             </div>
 
             <div className="cc-card-inner">

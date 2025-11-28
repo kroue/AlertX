@@ -17,6 +17,13 @@ export default function ControlCenter() {
     setTimeout(() => setNotification(null), 3000);
   };
 
+  // logout: clear storage and route to login
+  const handleLogout = () => {
+    try { localStorage.clear(); sessionStorage.clear(); } catch (e) {}
+    // navigate back to the login route (Login is mounted at `/`)
+    navigate('/');
+  };
+
   const handleSendEmergency = () => {
     if (!emergencyMessage.trim()) {
       showNotification('error', 'Please enter an emergency message');
@@ -53,6 +60,9 @@ export default function ControlCenter() {
           <div>
             <h1 className="cc-title">AlertX Control Center</h1>
             <p className="cc-sub">Emergency notification system</p>
+          </div>
+          <div style={{ marginLeft: 'auto' }}>
+            <button className="cc-btn" onClick={handleLogout}>Logout</button>
           </div>
         </div>
       </header>

@@ -2,25 +2,27 @@ import React, { useState } from 'react';
 import './login.css';
 import { Eye, EyeOff, LogIn, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from './firebase-config';
 
 function Login() {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [errors, setErrors] = useState({ username: '', password: '' });
+  const [errors, setErrors] = useState({ email: '', password: '' });
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleClearFields = () => {
-    setUsername('');
+    setEmail('');
     setPassword('');
-    setErrors({ username: '', password: '' });
+    setErrors({ email: '', password: '' });
   };
 
   const validateForm = () => {
-    const newErrors = { username: '', password: '' };
+    const newErrors = { email: '', password: '' };
     let isValid = true;
-    if (!username.trim()) { newErrors.username = 'Username is required'; isValid = false; }
+    if (!email.trim()) { newErrors.email = 'Email is required'; isValid = false; }
     if (!password) { newErrors.password = 'Password is required'; isValid = false; }
     setErrors(newErrors);
     return isValid;
@@ -30,12 +32,24 @@ function Login() {
     if (e && e.preventDefault) e.preventDefault();
     if (!validateForm()) return;
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      console.log('Login attempted with:', { username, password });
-      // On successful login navigate to control center
-      navigate('/controlcenter');
-    }, 1200);
+    signInWithEmailAndPassword(auth, email, password)
+      .then((userCredential) => {
+        setIsLoading(false);
+        // userCredential.user contains user info
+        console.log('Firebase login successful:', userCredential.user);
+        navigate('/controlcenter');
+      })
+      .catch((error) => {
+        setIsLoading(false);
+        const code = error.code || '';
+        let message = 'Login failed. Please try again.';
+        if (code === 'auth/invalid-email') message = 'Invalid email address.';
+        else if (code === 'auth/user-not-found') message = 'No account found for that email.';
+        else if (code === 'auth/wrong-password') message = 'Incorrect password.';
+        else if (error.message) message = error.message;
+        setErrors({ ...errors, password: message });
+        console.error('Firebase login error:', error);
+      });
   };
 
   const handleKeyPress = (e) => {
@@ -66,23 +80,23 @@ function Login() {
           </div>
 
           <form className="lx-form" onSubmit={handleLogin}>
-            <label className="lx-label" htmlFor="username">Username</label>
+            <label className="lx-label" htmlFor="email">Email</label>
             <div className="lx-field">
               <input
-                id="username"
-                className={`lx-input ${errors.username ? 'lx-input-error' : ''}`}
-                type="text"
-                value={username}
-                onChange={(e) => { setUsername(e.target.value); if (errors.username) setErrors({ ...errors, username: '' }); }}
+                id="email"
+                className={`lx-input ${errors.email ? 'lx-input-error' : ''}`}
+                type="email"
+                value={email}
+                onChange={(e) => { setEmail(e.target.value); if (errors.email) setErrors({ ...errors, email: '' }); }}
                 onKeyDown={handleKeyPress}
-                placeholder="Enter your username"
-                aria-label="username"
+                placeholder="Enter your email"
+                aria-label="email"
               />
-              {errors.username && (
+              {errors.email && (
                 <div className="lx-input-icon"><AlertCircle /></div>
               )}
             </div>
-            {errors.username && <p className="lx-error-text">{errors.username}</p>}
+            {errors.email && <p className="lx-error-text">{errors.email}</p>}
 
             <label className="lx-label" htmlFor="password">Password</label>
             <div className="lx-field">
