@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AlertTriangle, Plus, X, Send, ArrowLeft, MapPin, CheckCircle2 } from 'lucide-react';
 import './controlcenter.css';
 import Map from './Map';
@@ -6,6 +6,7 @@ import MapGoogle from './MapGoogle';
 import { useNavigate } from 'react-router-dom';
 import { auth } from './firebase-config';
 import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import html2canvas from 'html2canvas';
 
 export default function EmergencyAlertPage() {
   const navigate = useNavigate();
@@ -15,37 +16,125 @@ export default function EmergencyAlertPage() {
   const [sending, setSending] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [mapPoints, setMapPoints] = useState([]);
+  const mapContainerRef = useRef(null);
 
   const db = getFirestore();
 
   const defaultTypes = ['Flood'];
-  const zones = ['Zone 1', 'Zone 2', 'Zone 3'];
+  const zones = ['Zone 1', 'Zone 2', 'Zone 3', 'Zone 4'];
+
+  // Zone center coordinates based on the map image
+  const zoneCoordinates = {
+    'Zone 1': { lat: 8.4585, lng: 124.6475 },
+    'Zone 2': { lat: 8.4555, lng: 124.6445 },
+    'Zone 3': { lat: 8.4580, lng: 124.6400 },
+    'Zone 4': { lat: 8.4600, lng: 124.6435 }
+  };
 
   // custom types removed - emergency type is fixed to 'Flood'
 
   const toggleZone = (zone) => {
-    setSelectedZones(prev => 
-      prev.includes(zone) 
-        ? prev.filter(z => z !== zone)
-        : [...prev, zone]
-    );
+    const isCurrentlySelected = selectedZones.includes(zone);
+    
+    if (isCurrentlySelected) {
+      // Remove zone and its map pin
+      setSelectedZones(prev => prev.filter(z => z !== zone));
+      const coords = zoneCoordinates[zone];
+      setMapPoints(points => points.filter(p => 
+        !(Math.abs(p.lat - coords.lat) < 0.0001 && Math.abs(p.lng - coords.lng) < 0.0001)
+      ));
+    } else {
+      // Add zone and its map pin (check if already exists to prevent duplicates)
+      setSelectedZones(prev => [...prev, zone]);
+      const coords = zoneCoordinates[zone];
+      setMapPoints(points => {
+        const exists = points.some(p => 
+          Math.abs(p.lat - coords.lat) < 0.0001 && Math.abs(p.lng - coords.lng) < 0.0001
+        );
+        return exists ? points : [...points, coords];
+      });
+    }
   };
 
-  const clearSelections = () => setSelectedZones([]);
+  const clearSelections = () => {
+    setSelectedZones([]);
+    setMapPoints([]);
+  };
   const clearMessage = () => setMessage('');
 
   const handleSend = async () => {
     if (!message.trim() || selectedZones.length === 0) return;
+    // Require an authenticated user before attempting Firestore writes. If
+    // the client isn't signed in, Firestore rules (see FIRESTORE_RULES.md)
+    // will reject the write with "Missing or insufficient permissions".
+    if (!auth || !auth.currentUser) {
+      // Improve operator feedback instead of sending and logging a rules error.
+      // You can replace this with a nicer UI/modal if desired.
+      alert('You must be signed in to send alerts. Please sign in and try again.');
+      return;
+    }
+    // Signed-in users are allowed to send alerts per Firestore rules.
     setSending(true);
     try {
+      let mapImageUrl = null;
+      
+      // Capture map screenshot if there are pins
+      if (mapPoints.length > 0 && mapContainerRef.current) {
+        try {
+          const canvas = await html2canvas(mapContainerRef.current, {
+            backgroundColor: '#ffffff',
+            scale: 2,
+            logging: false
+          });
+          
+          // Convert canvas to blob
+          const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+          
+          // Upload to Cloudinary
+          const formData = new FormData();
+          formData.append('file', blob);
+          formData.append('upload_preset', 'alertx_maps');
+          
+          const cloudName = 'dfejxqixw';
+          console.log('Uploading to Cloudinary:', cloudName);
+          console.log('Upload preset:', 'alertx_maps');
+          
+          const cloudinaryResponse = await fetch(
+            `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+            {
+              method: 'POST',
+              body: formData
+            }
+          );
+          
+          console.log('Cloudinary response status:', cloudinaryResponse.status);
+          
+          if (cloudinaryResponse.ok) {
+            const data = await cloudinaryResponse.json();
+            mapImageUrl = data.secure_url;
+            console.log('Upload successful:', mapImageUrl);
+          } else {
+            const errorData = await cloudinaryResponse.text();
+            console.error('Cloudinary error:', errorData);
+          }
+        } catch (mapError) {
+          // eslint-disable-next-line no-console
+          console.error('Failed to capture/upload map:', mapError);
+          // Continue without map image
+        }
+      }
+      
       // create alert document in Firestore so backend/clients can broadcast
       await addDoc(collection(db, 'alerts'), {
         type: emergencyType,
         zones: selectedZones,
         message,
         mapPoints,
+        mapImageUrl,
         createdAt: serverTimestamp(),
-        sentBy: auth?.currentUser?.uid || null,
+        // auth.currentUser is guaranteed above, use its uid directly so
+        // security rules can validate request.auth on the server side.
+        sentBy: auth.currentUser.uid,
         status: 'queued'
       });
 
@@ -70,6 +159,9 @@ export default function EmergencyAlertPage() {
     const generated = `${emergencyType.toUpperCase()} WARNING for: ${selectedZones.length > 0 ? selectedZones.join(', ') : 'No zones selected'}. Evacuate immediately.`;
     setMessage(generated);
   }, [selectedZones, emergencyType]);
+
+  // Track auth state and whether the current user has an operator claim. This
+  // Note: we rely on Firestore rules to allow authenticated users to write.
 
   return (
     <div className="cc-background">
@@ -105,7 +197,7 @@ export default function EmergencyAlertPage() {
               {selectedZones.length > 0 && <div className="cc-summary"><p>Selected: {selectedZones.join(', ')}</p></div>}
 
               {/* map integration */}
-              <div style={{marginTop:18}}>
+              <div ref={mapContainerRef} style={{marginTop:18}}>
         {/* fixedBounds: approximate bbox for Brgy 26, Cagayan de Oro (southWest, northEast)
           Adjust coordinates if you have a more accurate polygon */}
                   {process.env.REACT_APP_GOOGLE_MAPS_API_KEY ? (
@@ -123,13 +215,19 @@ export default function EmergencyAlertPage() {
             <div className="cc-alert-preview"><p>{emergencyType.toUpperCase()} WARNING for: {selectedZones.length > 0 ? selectedZones.join(', ') : 'No zones selected'}. Evacuate immediately.</p></div>
             <textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Enter detailed emergency message..." rows={12} className="cc-textarea" />
             <p className="cc-char-count">{message.length}/1000 characters</p>
-            <div className="cc-send-grid">
-              <button onClick={clearMessage} className="cc-clear-text">Clear Text</button>
-              <button onClick={handleSend} disabled={sending || !message.trim() || selectedZones.length === 0} className="cc-send-btn">
-                {sending ? <div className="cc-spinner" /> : <><Send /><span>Send message</span></>}
-              </button>
-            </div>
-            {selectedZones.length === 0 && <p className="cc-warning-note">Please select at least one zone to send the alert</p>}
+              <div className="cc-send-grid">
+                <button onClick={clearMessage} className="cc-clear-text">Clear Text</button>
+                <button
+                  onClick={handleSend}
+                  disabled={sending || !message.trim() || selectedZones.length === 0 || !auth?.currentUser}
+                  className="cc-send-btn"
+                >
+                  {sending ? <div className="cc-spinner" /> : <><Send /><span>Send message</span></>}
+                </button>
+              </div>
+              {selectedZones.length === 0 && <p className="cc-warning-note">Please select at least one zone to send the alert</p>}
+              {!auth?.currentUser && <p className="cc-warning-note">You must be signed in to send an alert</p>}
+              { /* No operator-claim required: authenticated users can send alerts per rules */ }
           </div>
         </div>
 

@@ -1,55 +1,138 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AlertCircle, Plus, X, Send, ArrowLeft, MapPin, CheckCircle2, ChevronDown } from 'lucide-react';
 import './controlcenter.css';
 import { useNavigate } from 'react-router-dom';
 import Map from './Map';
 import MapGoogle from './MapGoogle';
+import { auth } from './firebase-config';
+import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import html2canvas from 'html2canvas';
 
 export default function WarningPage() {
   const navigate = useNavigate();
-  const [warningType, setWarningType] = useState('Weather');
-  const [customTypes, setCustomTypes] = useState([]);
-  const [newType, setNewType] = useState('');
+  const [warningType] = useState('Flood');
   const [message, setMessage] = useState('');
   const [selectedZones, setSelectedZones] = useState([]);
-  const [selectedPaths, setSelectedPaths] = useState([]);
   const [sending, setSending] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [mapPoints, setMapPoints] = useState([]);
+  const mapContainerRef = useRef(null);
 
-  const defaultTypes = ['Weather', 'Maintenance', 'Traffic', 'Event', 'Advisory', 'Update'];
-  const zones = [
-    { id: 'zone1', name: 'Zone 1', paths: ['Zone 1 - Path A', 'Zone 1 - Path B', 'Zone 1 - Path C'] },
-    { id: 'zone2', name: 'Zone 2', paths: ['Zone 2 - Path A', 'Zone 2 - Path B'] },
-    { id: 'zone3', name: 'Zone 3', paths: ['Zone 3 - Path A', 'Zone 3 - Path B', 'Zone 3 - Path C'] }
-  ];
+  const db = getFirestore();
 
-  const addCustomType = () => {
-    if (newType.trim() && !customTypes.includes(newType.trim())) { setCustomTypes([...customTypes, newType.trim()]); setNewType(''); }
+  // warning type is fixed to Flood (same as emergency page)
+  const zones = ['Zone 1', 'Zone 2', 'Zone 3', 'Zone 4'];
+
+  // Zone center coordinates based on the map image
+  const zoneCoordinates = {
+    'Zone 1': { lat: 8.4585, lng: 124.6475 },
+    'Zone 2': { lat: 8.4555, lng: 124.6445 },
+    'Zone 3': { lat: 8.4580, lng: 124.6400 },
+    'Zone 4': { lat: 8.4600, lng: 124.6435 }
   };
-  const removeCustomType = (type) => setCustomTypes(customTypes.filter(t => t !== type));
 
-  const toggleZone = (zoneId) => {
-    const zone = zones.find(z => z.id === zoneId);
-    if (selectedZones.includes(zoneId)) {
-      setSelectedZones(selectedZones.filter(z => z !== zoneId));
-      setSelectedPaths(selectedPaths.filter(p => !zone.paths.includes(p)));
+  // no custom types for warnings; type is fixed
+
+  const toggleZone = (zone) => {
+    const isCurrentlySelected = selectedZones.includes(zone);
+    
+    if (isCurrentlySelected) {
+      // Remove zone and its map pin
+      setSelectedZones(selectedZones.filter(z => z !== zone));
+      const coords = zoneCoordinates[zone];
+      setMapPoints(points => points.filter(p => 
+        !(Math.abs(p.lat - coords.lat) < 0.0001 && Math.abs(p.lng - coords.lng) < 0.0001)
+      ));
     } else {
-      setSelectedZones([...selectedZones, zoneId]);
+      // Add zone and its map pin (check if already exists to prevent duplicates)
+      setSelectedZones([...selectedZones, zone]);
+      const coords = zoneCoordinates[zone];
+      setMapPoints(points => {
+        const exists = points.some(p => 
+          Math.abs(p.lat - coords.lat) < 0.0001 && Math.abs(p.lng - coords.lng) < 0.0001
+        );
+        return exists ? points : [...points, coords];
+      });
     }
   };
 
-  const togglePath = (zonePath) => setSelectedPaths(prev => prev.includes(zonePath) ? prev.filter(p => p !== zonePath) : [...prev, zonePath]);
-  const clearSelections = () => { setSelectedZones([]); setSelectedPaths([]); };
+  const clearSelections = () => {
+    setSelectedZones([]);
+    setMapPoints([]);
+  };
   const clearMessage = () => setMessage('');
 
-  const handleSend = () => {
-    if (!message.trim() || (selectedZones.length === 0 && selectedPaths.length === 0)) return;
+  const handleSend = async () => {
+    if (!message.trim() || selectedZones.length === 0) return;
     setSending(true);
-    setTimeout(() => { setSending(false); setShowSuccess(true); setTimeout(() => setShowSuccess(false), 3000); }, 1500);
+    try {
+      let mapImageUrl = null;
+      
+      // Capture map screenshot if there are pins
+      if (mapPoints.length > 0 && mapContainerRef.current) {
+        try {
+          const canvas = await html2canvas(mapContainerRef.current, {
+            backgroundColor: '#ffffff',
+            scale: 2,
+            logging: false
+          });
+          
+          // Convert canvas to blob
+          const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+          
+          // Upload to Cloudinary
+          const formData = new FormData();
+          formData.append('file', blob);
+          formData.append('upload_preset', 'alertx_maps');
+          
+          const cloudName = 'dfejxqixw';
+          const cloudinaryResponse = await fetch(
+            `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+            {
+              method: 'POST',
+              body: formData
+            }
+          );
+          
+          if (cloudinaryResponse.ok) {
+            const data = await cloudinaryResponse.json();
+            mapImageUrl = data.secure_url;
+          }
+        } catch (mapError) {
+          // eslint-disable-next-line no-console
+          console.error('Failed to capture/upload map:', mapError);
+          // Continue without map image
+        }
+      }
+      
+      await addDoc(collection(db, 'warnings'), {
+        type: warningType,
+        zones: selectedZones,
+        message,
+        mapPoints,
+        mapImageUrl,
+        createdAt: serverTimestamp(),
+        // allow missing auth during development; store uid when available
+        sentBy: auth?.currentUser?.uid || null,
+        status: 'queued'
+      });
+
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to write warning to Firestore', err);
+      alert('Failed to send warning. Check console for details.');
+    } finally {
+      setSending(false);
+    }
   };
 
-  const allTypes = [...defaultTypes, ...customTypes];
+  // auto-generate the warning message when zones or type change
+  useEffect(() => {
+    const generated = `${warningType.toUpperCase()} WARNING for: ${selectedZones.length > 0 ? selectedZones.join(', ') : 'No zones selected'}. Evacuate immediately.`;
+    setMessage(generated);
+  }, [selectedZones, warningType]);
 
   return (
     <div className="cc-background">
@@ -67,72 +150,24 @@ export default function WarningPage() {
                 <h2 className="text-2xl font-bold cc-card-sub">Type of Warning:</h2>
               </div>
 
-              <select value={warningType} onChange={(e) => setWarningType(e.target.value)} className="cc-select">
-                {allTypes.map(type => <option key={type} value={type}>{type}</option>)}
-              </select>
-
-              <div className="mb-4">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Add a Custom Type:</label>
-                <input value={newType} onChange={(e) => setNewType(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && addCustomType()} placeholder="Enter custom warning type..." className="cc-input" />
-              </div>
-
-              <div className="cc-add-row">
-                <button onClick={() => setNewType('')} className="cc-button-clear">Clear</button>
-                <button onClick={addCustomType} className="cc-button-add"><Plus />Add</button>
-              </div>
-
-              {customTypes.length > 0 && (
-                <div className="mt-4">
-                  <p className="text-sm font-semibold">Custom Types:</p>
-                  <div className="cc-custom-types">
-                    {customTypes.map(type => (
-                      <div key={type} className="cc-chip cc-chip--warn">
-                        <span>{type}</span>
-                        <button onClick={() => removeCustomType(type)} className="cc-chip-remove"><X /></button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <div className="cc-select">{warningType}</div>
             </div>
 
             <div className="cc-card-inner">
-              <div className="flex items-center gap-3 mb-4"><MapPin className="w-6 h-6 text-yellow-500" /><h3 className="text-xl font-bold">Select Zones & Paths:</h3></div>
+              <div className="flex items-center gap-3 mb-4"><MapPin className="w-6 h-6 text-yellow-500" /><h3 className="text-xl font-bold">Select Zones:</h3></div>
               <div className="cc-zone-list">
-                {zones.map(zone => {
-                  const isZoneSelected = selectedZones.includes(zone.id);
-                  const selectedPathsInZone = selectedPaths.filter(p => zone.paths.includes(p)).length;
-                  return (
-                    <div key={zone.id} className="cc-zone-card">
-                      <label className="cc-zone-row">
-                        <input type="checkbox" checked={isZoneSelected} onChange={() => toggleZone(zone.id)} className="cc-zone-checkbox" />
-                        <span className="cc-zone-label">{zone.name}</span>
-                        {isZoneSelected && <CheckCircle2 className="cc-zone-check" />}
-                        {selectedPathsInZone > 0 && !isZoneSelected && <span className="cc-path-count">{selectedPathsInZone} path{selectedPathsInZone > 1 ? 's' : ''}</span>}
-                      </label>
-                      <div className="cc-path-list">
-                        {zone.paths.map(path => (
-                          <label key={path} className="cc-path-row">
-                            <input type="checkbox" checked={selectedPaths.includes(path) || isZoneSelected} onChange={() => !isZoneSelected && togglePath(path)} disabled={isZoneSelected} className="cc-path-checkbox" />
-                            <span className="cc-path-label">{path}</span>
-                            {(selectedPaths.includes(path) || isZoneSelected) && <CheckCircle2 className="cc-path-check" />}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
+                {zones.map(zone => (
+                  <label key={zone} className="cc-zone-row">
+                    <input type="checkbox" checked={selectedZones.includes(zone)} onChange={() => toggleZone(zone)} className="cc-zone-checkbox" />
+                    <span className="cc-zone-label">{zone}</span>
+                    {selectedZones.includes(zone) && <CheckCircle2 className="cc-zone-check" />}
+                  </label>
+                ))}
               </div>
               <button onClick={clearSelections} className="cc-button-clear-selections">Clear Selections</button>
+              {selectedZones.length > 0 && <div className="cc-summary"><p>Selected: {selectedZones.join(', ')}</p></div>}
 
-              {(selectedZones.length > 0 || selectedPaths.length > 0) && (
-                <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                  <p className="text-sm font-semibold text-yellow-700 mb-2">Summary:</p>
-                  {selectedZones.length > 0 && <p className="text-xs text-yellow-600">• Zones: {selectedZones.map(z => zones.find(zone => zone.id === z).name).join(', ')}</p>}
-                  {selectedPaths.length > 0 && <p className="text-xs text-yellow-600">• Individual Paths: {selectedPaths.length}</p>}
-                </div>
-              )}
-              <div style={{marginTop:18}}>
+              <div ref={mapContainerRef} style={{marginTop:18}}>
         {/* fixedBounds: approximate bbox for Brgy 26, Cagayan de Oro (southWest, northEast)
           Adjust coordinates if you have a more accurate polygon */}
                 {process.env.REACT_APP_GOOGLE_MAPS_API_KEY ? (
@@ -147,16 +182,17 @@ export default function WarningPage() {
 
           <div className="cc-card-inner">
             <div className="cc-message-header"><span className="cc-live-dot cc-live-dot--warn" /> <h3>Warning Message:</h3></div>
-            <div className="cc-alert-preview cc-alert-preview--warn"><p>{warningType.toUpperCase()} - {selectedZones.length + selectedPaths.length > 0 ? `Affecting ${selectedZones.length} zone${selectedZones.length !== 1 ? 's' : ''} and ${selectedPaths.length} path${selectedPaths.length !== 1 ? 's' : ''}` : 'No areas selected'}</p></div>
+            <div className="cc-alert-preview cc-alert-preview--warn"><p>{warningType.toUpperCase()} WARNING for: {selectedZones.length > 0 ? selectedZones.join(', ') : 'No zones selected'}. Evacuate immediately.</p></div>
             <textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Enter warning message details..." rows={12} className="cc-textarea" />
             <p className="cc-char-count">{message.length}/1000 characters</p>
-            <div className="cc-send-grid">
-              <button onClick={clearMessage} className="cc-clear-text">Clear Text</button>
-              <button onClick={handleSend} disabled={sending || !message.trim() || (selectedZones.length === 0 && selectedPaths.length === 0)} className="cc-send-btn">
-                {sending ? <div className="cc-spinner" /> : <><Send /><span>Send message</span></>}
-              </button>
-            </div>
-            {selectedZones.length === 0 && selectedPaths.length === 0 && <p className="cc-warning-note">Please select at least one zone or path to send the warning</p>}
+              <div className="cc-send-grid">
+                <button onClick={clearMessage} className="cc-clear-text">Clear Text</button>
+                <button onClick={handleSend} disabled={sending || !message.trim() || selectedZones.length === 0 || !auth?.currentUser} className="cc-send-btn">
+                  {sending ? <div className="cc-spinner" /> : <><Send /><span>Send message</span></>}
+                </button>
+              </div>
+              {selectedZones.length === 0 && <p className="cc-warning-note">Please select at least one zone to send the warning</p>}
+              {!auth?.currentUser && <p className="cc-warning-note">You must be signed in to send a warning</p>}
           </div>
         </div>
 

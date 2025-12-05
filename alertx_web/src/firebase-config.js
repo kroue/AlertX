@@ -6,6 +6,7 @@
 
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
+import { getStorage } from 'firebase/storage';
 
 // Default web config (from user-provided snippet). These are safe client
 // values (apiKey is public-facing). We still prefer REACT_APP_* values when
@@ -52,7 +53,8 @@ export default firebaseConfig;
 // The Firebase SDK functions are imported at top-of-file.
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const storage = getStorage(app);
 
 // Provide both the default config object and a named `auth` export so
 // client files can import `{ auth }` or the default config as needed.
-export { auth };
+export { auth, storage };

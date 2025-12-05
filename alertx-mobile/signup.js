@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import firebaseConfig from './firebase-config';
 
 export default function SignupScreen({ navigation }) {
   const [firstName, setFirstName] = useState('');
@@ -19,6 +20,8 @@ export default function SignupScreen({ navigation }) {
   const [contactNumber, setContactNumber] = useState('');
   const [zone, setZone] = useState('');
   const [address, setAddress] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
 
@@ -30,6 +33,8 @@ export default function SignupScreen({ navigation }) {
     setContactNumber('');
     setZone('');
     setAddress('');
+    setPassword('');
+    setConfirmPassword('');
     setErrors({});
   };
 
@@ -45,6 +50,9 @@ export default function SignupScreen({ navigation }) {
     }
     if (!contactNumber.trim()) e.contactNumber = 'Contact number is required';
     else if (!/^\+?[0-9\s-]{6,20}$/.test(contactNumber)) e.contactNumber = 'Contact number looks invalid';
+    if (!password) e.password = 'Password is required';
+  if (!confirmPassword) e.confirmPassword = 'Please confirm your password';
+  else if (password && password !== confirmPassword) e.confirmPassword = 'Passwords do not match';
     if (!zone.trim()) e.zone = 'Zone is required';
     if (!address.trim()) e.address = 'Address is required';
 
@@ -55,13 +63,54 @@ export default function SignupScreen({ navigation }) {
   const handleSignup = () => {
     if (!validate()) return;
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      console.log('Signup data:', { firstName, lastName, username, email, contactNumber, zone, address });
-      // Here you'd call your API to register the user
-      // After successful signup, navigate back to Login
-      if (navigation && navigation.navigate) navigation.navigate('Login');
-    }, 1500);
+    (async () => {
+      try {
+        // Create a Firestore document in `mobileUsers` via the REST API.
+        // This avoids adding the Firebase SDK to the mobile bundle.
+        // Use the username as the document ID so login can fetch by username.
+        const uname = username.trim();
+        const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/mobileUsers?documentId=${encodeURIComponent(uname)}&key=${firebaseConfig.apiKey}`;
+        const body = {
+          fields: {
+            firstName: { stringValue: firstName },
+            lastName: { stringValue: lastName },
+            username: { stringValue: uname },
+            email: { stringValue: email },
+            contactNumber: { stringValue: contactNumber },
+            zone: { stringValue: zone },
+              address: { stringValue: address },
+              // NOTE: storing plain-text passwords is insecure. This is for
+              // short-term development convenience only. Replace with Firebase
+              // Auth or hashed passwords before production.
+              password: { stringValue: password.trim() },
+            createdAt: { timestampValue: new Date().toISOString() }
+          }
+        };
+
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          // surface error for developer
+          console.error('Failed to create mobile user', res.status, text);
+          throw new Error('Failed to create mobile user');
+        }
+
+        // success
+        console.log('Signup data saved to Firestore mobileUsers');
+        if (navigation && navigation.navigate) navigation.navigate('Login');
+      } catch (err) {
+        console.error('Signup error', err);
+        // keep user on signup page; show a simple alert
+        alert('Failed to create account. Try again later.');
+      } finally {
+        setIsLoading(false);
+      }
+    })();
   };
 
   return (
@@ -154,6 +203,28 @@ export default function SignupScreen({ navigation }) {
               numberOfLines={3}
             />
             {errors.address ? <Text style={styles.errorText}>{errors.address}</Text> : null}
+
+            <Text style={[styles.label, { marginTop: 12 }]}>Password</Text>
+            <TextInput
+              value={password}
+              onChangeText={(t) => { setPassword(t); if (errors.password) setErrors({ ...errors, password: '' }); }}
+              placeholder="Create a password"
+              secureTextEntry
+              style={[styles.input, errors.password ? styles.inputError : null]}
+              autoCapitalize="none"
+            />
+            {errors.password ? <Text style={styles.errorText}>{errors.password}</Text> : null}
+
+            <Text style={[styles.label, { marginTop: 12 }]}>Confirm Password</Text>
+            <TextInput
+              value={confirmPassword}
+              onChangeText={(t) => { setConfirmPassword(t); if (errors.confirmPassword) setErrors({ ...errors, confirmPassword: '' }); }}
+              placeholder="Confirm password"
+              secureTextEntry
+              style={[styles.input, errors.confirmPassword ? styles.inputError : null]}
+              autoCapitalize="none"
+            />
+            {errors.confirmPassword ? <Text style={styles.errorText}>{errors.confirmPassword}</Text> : null}
 
             <TouchableOpacity
               style={[styles.loginButton, isLoading ? styles.loginButtonDisabled : null]}

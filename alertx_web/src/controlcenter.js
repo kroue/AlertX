@@ -1,16 +1,138 @@
-import React, { useState } from 'react';
-import { AlertTriangle, Bell, Send, AlertCircle, CheckCircle2, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { AlertTriangle, Bell, Send, AlertCircle, CheckCircle2, X, FileText, History } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { signOut } from 'firebase/auth';
+import { auth } from './firebase-config';
+import firebaseConfig from './firebase-config';
 import './controlcenter.css';
 
 export default function ControlCenter() {
   const navigate = useNavigate();
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
   const [showWarningModal, setShowWarningModal] = useState(false);
+  const [showReportsModal, setShowReportsModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyTab, setHistoryTab] = useState('alerts'); // 'alerts' or 'warnings'
+  const [selectedReport, setSelectedReport] = useState(null);
+  const [selectedHistoryItem, setSelectedHistoryItem] = useState(null);
   const [emergencyMessage, setEmergencyMessage] = useState('');
   const [warningMessage, setWarningMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [notification, setNotification] = useState(null);
+  const [reports, setReports] = useState([]);
+  const [reportCount, setReportCount] = useState(0);
+  const [alerts, setAlerts] = useState([]);
+  const [warnings, setWarnings] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetchReports();
+    fetchHistory();
+    const interval = setInterval(() => {
+      fetchReports();
+      fetchHistory();
+    }, 30000); // Refresh every 30 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchReports = async () => {
+    try {
+      const base = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents`;
+      const url = `${base}/incidents?key=${firebaseConfig.apiKey}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        const incidentDocs = data.documents || [];
+        const parsed = incidentDocs.map(doc => {
+          const fields = doc.fields || {};
+          return {
+            id: doc.name.split('/').pop(),
+            incidentType: fields.incidentType?.stringValue || '',
+            description: fields.description?.stringValue || '',
+            locationText: fields.locationText?.stringValue || '',
+            urgent: fields.urgent?.booleanValue || false,
+            reporter: fields.reporter?.stringValue || 'Unknown',
+            createdAt: fields.createdAt?.timestampValue || '',
+            zone: fields.zone?.integerValue || null,
+            latitude: fields.latitude?.doubleValue || null,
+            longitude: fields.longitude?.doubleValue || null,
+            photoUrl: fields.photoUrl?.stringValue || null,
+            mapImageUrl: fields.mapImageUrl?.stringValue || null,
+          };
+        });
+        setReports(parsed);
+        setReportCount(parsed.length);
+      }
+    } catch (error) {
+      console.error('Error fetching reports:', error);
+    }
+  };
+
+  const fetchHistory = async () => {
+    try {
+      const base = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents`;
+      
+      // Fetch alerts
+      const alertsUrl = `${base}/alerts?key=${firebaseConfig.apiKey}`;
+      console.log('Fetching alerts from:', alertsUrl);
+      const alertsRes = await fetch(alertsUrl);
+      console.log('Alerts response status:', alertsRes.status);
+      if (alertsRes.ok) {
+        const data = await alertsRes.json();
+        console.log('Alerts data:', data);
+        const alertDocs = data.documents || [];
+        console.log('Alert documents count:', alertDocs.length);
+        const parsed = alertDocs.map(doc => {
+          const fields = doc.fields || {};
+          console.log('Parsing alert doc:', doc.name, fields);
+          return {
+            id: doc.name.split('/').pop(),
+            type: fields.type?.stringValue || 'emergency',
+            message: fields.message?.stringValue || '',
+            zones: fields.zones?.arrayValue?.values?.map(v => v.integerValue || v.stringValue) || [],
+            createdAt: fields.createdAt?.timestampValue || '',
+            sentBy: fields.sentBy?.stringValue || 'System',
+            mapImageUrl: fields.mapImageUrl?.stringValue || null,
+          };
+        }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        console.log('Parsed alerts:', parsed);
+        setAlerts(parsed);
+      } else {
+        console.error('Failed to fetch alerts:', await alertsRes.text());
+      }
+
+      // Fetch warnings
+      const warningsUrl = `${base}/warnings?key=${firebaseConfig.apiKey}`;
+      console.log('Fetching warnings from:', warningsUrl);
+      const warningsRes = await fetch(warningsUrl);
+      console.log('Warnings response status:', warningsRes.status);
+      if (warningsRes.ok) {
+        const data = await warningsRes.json();
+        console.log('Warnings data:', data);
+        const warningDocs = data.documents || [];
+        console.log('Warning documents count:', warningDocs.length);
+        const parsed = warningDocs.map(doc => {
+          const fields = doc.fields || {};
+          console.log('Parsing warning doc:', doc.name, fields);
+          return {
+            id: doc.name.split('/').pop(),
+            type: fields.type?.stringValue || 'warning',
+            message: fields.message?.stringValue || '',
+            zones: fields.zones?.arrayValue?.values?.map(v => v.integerValue || v.stringValue) || [],
+            createdAt: fields.createdAt?.timestampValue || '',
+            sentBy: fields.sentBy?.stringValue || 'System',
+            mapImageUrl: fields.mapImageUrl?.stringValue || null,
+          };
+        }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        console.log('Parsed warnings:', parsed);
+        setWarnings(parsed);
+      } else {
+        console.error('Failed to fetch warnings:', await warningsRes.text());
+      }
+    } catch (error) {
+      console.error('Error fetching history:', error);
+    }
+  };
 
   const showNotification = (type, message) => {
     setNotification({ type, message });
@@ -18,8 +140,16 @@ export default function ControlCenter() {
   };
 
   // logout: clear storage and route to login
-  const handleLogout = () => {
+  const handleLogout = async () => {
     try { localStorage.clear(); sessionStorage.clear(); } catch (e) {}
+    try {
+      // Sign out from Firebase so auth.currentUser becomes null and rules
+      // will block writes until the user signs back in.
+      await signOut(auth);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('Sign-out failed', e);
+    }
     // navigate back to the login route (Login is mounted at `/`)
     navigate('/');
   };
@@ -61,7 +191,30 @@ export default function ControlCenter() {
             <h1 className="cc-title">AlertX Control Center</h1>
             <p className="cc-sub">Emergency notification system</p>
           </div>
-          <div style={{ marginLeft: 'auto' }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <button className="cc-btn" onClick={() => setShowHistoryModal(true)}>
+              <History size={16} style={{ marginRight: '6px' }} />
+              History
+            </button>
+            <button className="cc-btn" onClick={() => setShowReportsModal(true)} style={{ position: 'relative' }}>
+              <FileText size={16} style={{ marginRight: '6px' }} />
+              Reports
+              {reportCount > 0 && (
+                <span style={{
+                  position: 'absolute',
+                  top: '-8px',
+                  right: '-8px',
+                  backgroundColor: '#ef4444',
+                  color: 'white',
+                  borderRadius: '12px',
+                  padding: '2px 8px',
+                  fontSize: '12px',
+                  fontWeight: '700'
+                }}>
+                  {reportCount}
+                </span>
+              )}
+            </button>
             <button className="cc-btn" onClick={handleLogout}>Logout</button>
           </div>
         </div>
@@ -178,6 +331,452 @@ export default function ControlCenter() {
               <button className="cc-btn">Cancel</button>
               <button className="cc-btn cc-btn--warn" onClick={handleSendWarning} disabled={sending}>{sending ? 'Sending...' : 'Send Warning'}</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reports Modal */}
+      {showReportsModal && (
+        <div className="cc-modal-overlay" onClick={() => !selectedReport && setShowReportsModal(false)}>
+          <div className="cc-modal" style={{ maxWidth: selectedReport ? '900px' : '800px' }} onClick={(e) => e.stopPropagation()}>
+            <button className="cc-modal-close" onClick={() => {
+              setSelectedReport(null);
+              setShowReportsModal(false);
+            }}><X /></button>
+            
+            {!selectedReport ? (
+              <>
+                <div className="cc-modal-top">
+                  <div className="cc-modal-icon"><FileText /></div>
+                  <div>
+                    <h3>Incident Reports</h3>
+                    <p style={{ color: '#6B7280', fontSize: '14px' }}>User-submitted incident reports</p>
+                  </div>
+                </div>
+
+                <div style={{ maxHeight: '500px', overflowY: 'auto', marginTop: '20px' }}>
+                  {reports.length === 0 ? (
+                    <p style={{ textAlign: 'center', color: '#6B7280', padding: '40px' }}>No reports available</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {reports.map((report) => (
+                        <div 
+                          key={report.id}
+                          style={{
+                            border: '1px solid #E5E7EB',
+                            borderRadius: '12px',
+                            padding: '16px',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            backgroundColor: report.urgent ? '#FEF2F2' : '#fff'
+                          }}
+                          onClick={() => setSelectedReport(report)}
+                          onMouseEnter={(e) => e.currentTarget.style.borderColor = '#06b6d4'}
+                          onMouseLeave={(e) => e.currentTarget.style.borderColor = '#E5E7EB'}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '8px' }}>
+                            <div>
+                              <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#111827', marginBottom: '4px' }}>
+                                {report.incidentType}
+                                {report.urgent && (
+                                  <span style={{
+                                    marginLeft: '8px',
+                                    backgroundColor: '#ef4444',
+                                    color: 'white',
+                                    padding: '2px 8px',
+                                    borderRadius: '12px',
+                                    fontSize: '11px',
+                                    fontWeight: '700'
+                                  }}>URGENT</span>
+                                )}
+                              </h4>
+                              <p style={{ fontSize: '14px', color: '#6B7280' }}>{report.locationText}</p>
+                            </div>
+                            <span style={{ fontSize: '12px', color: '#9CA3AF' }}>
+                              {new Date(report.createdAt).toLocaleString()}
+                            </span>
+                          </div>
+                          <p style={{ fontSize: '14px', color: '#374151', marginBottom: '8px' }}>
+                            {report.description.length > 100 ? report.description.substring(0, 100) + '...' : report.description}
+                          </p>
+                          <div style={{ display: 'flex', gap: '8px', fontSize: '12px', color: '#6B7280' }}>
+                            <span>Reporter: {report.reporter}</span>
+                            {report.zone && <span>• Zone {report.zone}</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="cc-modal-top">
+                  <button 
+                    onClick={() => setSelectedReport(null)}
+                    style={{ 
+                      marginRight: '12px',
+                      padding: '8px',
+                      border: '1px solid #E5E7EB',
+                      borderRadius: '8px',
+                      background: 'white',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ← Back
+                  </button>
+                  <div className="cc-modal-icon"><FileText /></div>
+                  <div>
+                    <h3>{selectedReport.incidentType}</h3>
+                    <p style={{ color: '#6B7280', fontSize: '14px' }}>
+                      Reported by {selectedReport.reporter} • {new Date(selectedReport.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ maxHeight: '500px', overflowY: 'auto', marginTop: '20px' }}>
+                  <div style={{ display: 'grid', gap: '20px' }}>
+                    {/* Details */}
+                    <div>
+                      <h4 style={{ fontSize: '14px', fontWeight: '700', color: '#111827', marginBottom: '8px' }}>Description</h4>
+                      <p style={{ fontSize: '14px', color: '#374151', lineHeight: '1.6' }}>{selectedReport.description}</p>
+                    </div>
+
+                    <div>
+                      <h4 style={{ fontSize: '14px', fontWeight: '700', color: '#111827', marginBottom: '8px' }}>Location</h4>
+                      <p style={{ fontSize: '14px', color: '#374151' }}>{selectedReport.locationText}</p>
+                      {selectedReport.zone && (
+                        <span style={{
+                          display: 'inline-block',
+                          marginTop: '8px',
+                          backgroundColor: '#06b6d4',
+                          color: 'white',
+                          padding: '4px 12px',
+                          borderRadius: '12px',
+                          fontSize: '12px',
+                          fontWeight: '700'
+                        }}>
+                          Zone {selectedReport.zone}
+                        </span>
+                      )}
+                      {selectedReport.latitude && selectedReport.longitude && (
+                        <p style={{ fontSize: '12px', color: '#6B7280', marginTop: '4px' }}>
+                          Coordinates: {selectedReport.latitude.toFixed(5)}, {selectedReport.longitude.toFixed(5)}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Map Image */}
+                    {selectedReport.mapImageUrl && (
+                      <div>
+                        <h4 style={{ fontSize: '14px', fontWeight: '700', color: '#111827', marginBottom: '8px' }}>Location Map</h4>
+                        <img 
+                          src={selectedReport.mapImageUrl} 
+                          alt="Location map"
+                          style={{
+                            width: '100%',
+                            maxHeight: '300px',
+                            objectFit: 'contain',
+                            borderRadius: '8px',
+                            border: '1px solid #E5E7EB'
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Photo */}
+                    {selectedReport.photoUrl && (
+                      <div>
+                        <h4 style={{ fontSize: '14px', fontWeight: '700', color: '#111827', marginBottom: '8px' }}>Incident Photo</h4>
+                        <img 
+                          src={selectedReport.photoUrl} 
+                          alt="Incident"
+                          style={{
+                            width: '100%',
+                            maxHeight: '400px',
+                            objectFit: 'contain',
+                            borderRadius: '8px',
+                            border: '1px solid #E5E7EB'
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Status */}
+                    <div style={{
+                      padding: '12px',
+                      backgroundColor: selectedReport.urgent ? '#FEF2F2' : '#F9FAFB',
+                      borderRadius: '8px',
+                      border: '1px solid',
+                      borderColor: selectedReport.urgent ? '#FECACA' : '#E5E7EB'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {selectedReport.urgent ? (
+                          <>
+                            <AlertTriangle size={18} color="#ef4444" />
+                            <span style={{ fontSize: '14px', fontWeight: '700', color: '#991B1B' }}>URGENT REPORT</span>
+                          </>
+                        ) : (
+                          <>
+                            <AlertCircle size={18} color="#6B7280" />
+                            <span style={{ fontSize: '14px', fontWeight: '700', color: '#374151' }}>Standard Report</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* History Modal */}
+      {showHistoryModal && (
+        <div className="cc-modal-overlay" onClick={() => !selectedHistoryItem && setShowHistoryModal(false)}>
+          <div className="cc-modal" style={{ maxWidth: selectedHistoryItem ? '900px' : '800px' }} onClick={(e) => e.stopPropagation()}>
+            <button className="cc-modal-close" onClick={() => {
+              setSelectedHistoryItem(null);
+              setShowHistoryModal(false);
+            }}><X /></button>
+            
+            {!selectedHistoryItem ? (
+              <>
+                <div className="cc-modal-top">
+                  <div className="cc-modal-icon"><History /></div>
+                  <div>
+                    <h3>Alert & Warning History</h3>
+                    <p style={{ color: '#6B7280', fontSize: '14px' }}>View sent alerts and warnings</p>
+                  </div>
+                </div>
+
+                {/* Tabs */}
+                <div style={{ display: 'flex', gap: '12px', marginTop: '20px', borderBottom: '2px solid #E5E7EB' }}>
+                  <button
+                    onClick={() => setHistoryTab('alerts')}
+                    style={{
+                      padding: '12px 24px',
+                      border: 'none',
+                      background: 'none',
+                      cursor: 'pointer',
+                      fontWeight: '700',
+                      fontSize: '14px',
+                      color: historyTab === 'alerts' ? '#ef4444' : '#6B7280',
+                      borderBottom: historyTab === 'alerts' ? '2px solid #ef4444' : 'none',
+                      marginBottom: '-2px'
+                    }}
+                  >
+                    <AlertTriangle size={16} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
+                    Alerts ({alerts.length})
+                  </button>
+                  <button
+                    onClick={() => setHistoryTab('warnings')}
+                    style={{
+                      padding: '12px 24px',
+                      border: 'none',
+                      background: 'none',
+                      cursor: 'pointer',
+                      fontWeight: '700',
+                      fontSize: '14px',
+                      color: historyTab === 'warnings' ? '#f59e0b' : '#6B7280',
+                      borderBottom: historyTab === 'warnings' ? '2px solid #f59e0b' : 'none',
+                      marginBottom: '-2px'
+                    }}
+                  >
+                    <AlertCircle size={16} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
+                    Warnings ({warnings.length})
+                  </button>
+                </div>
+
+                <div style={{ maxHeight: '500px', overflowY: 'auto', marginTop: '20px' }}>
+                  {historyTab === 'alerts' ? (
+                    alerts.length === 0 ? (
+                      <p style={{ textAlign: 'center', color: '#6B7280', padding: '40px' }}>No alerts sent yet</p>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {alerts.map((alert) => (
+                          <div 
+                            key={alert.id}
+                            style={{
+                              border: '1px solid #FECACA',
+                              borderRadius: '12px',
+                              padding: '16px',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s',
+                              backgroundColor: '#FEF2F2'
+                            }}
+                            onClick={() => setSelectedHistoryItem(alert)}
+                            onMouseEnter={(e) => e.currentTarget.style.borderColor = '#ef4444'}
+                            onMouseLeave={(e) => e.currentTarget.style.borderColor = '#FECACA'}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '8px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <AlertTriangle size={20} color="#ef4444" />
+                                <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#991B1B' }}>
+                                  Emergency Alert
+                                </h4>
+                              </div>
+                              <span style={{ fontSize: '12px', color: '#9CA3AF' }}>
+                                {new Date(alert.createdAt).toLocaleString()}
+                              </span>
+                            </div>
+                            <p style={{ fontSize: '14px', color: '#991B1B', marginBottom: '8px' }}>
+                              {alert.message.length > 100 ? alert.message.substring(0, 100) + '...' : alert.message}
+                            </p>
+                            <div style={{ display: 'flex', gap: '8px', fontSize: '12px', color: '#991B1B' }}>
+                              <span>Sent by: {alert.sentBy}</span>
+                              {alert.zones.length > 0 && <span>• Zones: {alert.zones.join(', ')}</span>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  ) : (
+                    warnings.length === 0 ? (
+                      <p style={{ textAlign: 'center', color: '#6B7280', padding: '40px' }}>No warnings sent yet</p>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {warnings.map((warning) => (
+                          <div 
+                            key={warning.id}
+                            style={{
+                              border: '1px solid #FED7AA',
+                              borderRadius: '12px',
+                              padding: '16px',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s',
+                              backgroundColor: '#FFFBEB'
+                            }}
+                            onClick={() => setSelectedHistoryItem(warning)}
+                            onMouseEnter={(e) => e.currentTarget.style.borderColor = '#f59e0b'}
+                            onMouseLeave={(e) => e.currentTarget.style.borderColor = '#FED7AA'}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '8px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <AlertCircle size={20} color="#f59e0b" />
+                                <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#92400E' }}>
+                                  Warning
+                                </h4>
+                              </div>
+                              <span style={{ fontSize: '12px', color: '#9CA3AF' }}>
+                                {new Date(warning.createdAt).toLocaleString()}
+                              </span>
+                            </div>
+                            <p style={{ fontSize: '14px', color: '#92400E', marginBottom: '8px' }}>
+                              {warning.message.length > 100 ? warning.message.substring(0, 100) + '...' : warning.message}
+                            </p>
+                            <div style={{ display: 'flex', gap: '8px', fontSize: '12px', color: '#92400E' }}>
+                              <span>Sent by: {warning.sentBy}</span>
+                              {warning.zones.length > 0 && <span>• Zones: {warning.zones.join(', ')}</span>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="cc-modal-top">
+                  <button 
+                    onClick={() => setSelectedHistoryItem(null)}
+                    style={{ 
+                      marginRight: '12px',
+                      padding: '8px',
+                      border: '1px solid #E5E7EB',
+                      borderRadius: '8px',
+                      background: 'white',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ← Back
+                  </button>
+                  <div className="cc-modal-icon">
+                    {selectedHistoryItem.type === 'emergency' ? <AlertTriangle /> : <AlertCircle />}
+                  </div>
+                  <div>
+                    <h3>{selectedHistoryItem.type === 'emergency' ? 'Emergency Alert' : 'Warning'}</h3>
+                    <p style={{ color: '#6B7280', fontSize: '14px' }}>
+                      Sent by {selectedHistoryItem.sentBy} • {new Date(selectedHistoryItem.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ maxHeight: '500px', overflowY: 'auto', marginTop: '20px' }}>
+                  <div style={{ display: 'grid', gap: '20px' }}>
+                    {/* Message */}
+                    <div>
+                      <h4 style={{ fontSize: '14px', fontWeight: '700', color: '#111827', marginBottom: '8px' }}>Message</h4>
+                      <p style={{ fontSize: '14px', color: '#374151', lineHeight: '1.6' }}>{selectedHistoryItem.message}</p>
+                    </div>
+
+                    {/* Zones */}
+                    {selectedHistoryItem.zones.length > 0 && (
+                      <div>
+                        <h4 style={{ fontSize: '14px', fontWeight: '700', color: '#111827', marginBottom: '8px' }}>Affected Zones</h4>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          {selectedHistoryItem.zones.map((zone, idx) => (
+                            <span key={idx} style={{
+                              backgroundColor: '#06b6d4',
+                              color: 'white',
+                              padding: '4px 12px',
+                              borderRadius: '12px',
+                              fontSize: '12px',
+                              fontWeight: '700'
+                            }}>
+                              {zone}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Map Image */}
+                    {selectedHistoryItem.mapImageUrl && (
+                      <div>
+                        <h4 style={{ fontSize: '14px', fontWeight: '700', color: '#111827', marginBottom: '8px' }}>Coverage Map</h4>
+                        <img 
+                          src={selectedHistoryItem.mapImageUrl} 
+                          alt="Coverage map"
+                          style={{
+                            width: '100%',
+                            maxHeight: '400px',
+                            objectFit: 'contain',
+                            borderRadius: '8px',
+                            border: '1px solid #E5E7EB'
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Type Badge */}
+                    <div style={{
+                      padding: '12px',
+                      backgroundColor: selectedHistoryItem.type === 'emergency' ? '#FEF2F2' : '#FFFBEB',
+                      borderRadius: '8px',
+                      border: '1px solid',
+                      borderColor: selectedHistoryItem.type === 'emergency' ? '#FECACA' : '#FED7AA'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {selectedHistoryItem.type === 'emergency' ? (
+                          <>
+                            <AlertTriangle size={18} color="#ef4444" />
+                            <span style={{ fontSize: '14px', fontWeight: '700', color: '#991B1B' }}>EMERGENCY ALERT</span>
+                          </>
+                        ) : (
+                          <>
+                            <AlertCircle size={18} color="#f59e0b" />
+                            <span style={{ fontSize: '14px', fontWeight: '700', color: '#92400E' }}>WARNING NOTIFICATION</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

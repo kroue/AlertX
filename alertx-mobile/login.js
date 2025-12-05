@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
+  Image,
   TextInput,
   TouchableOpacity,
   StyleSheet,
@@ -10,6 +11,8 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import firebaseConfig from './firebase-config';
 
 export default function MobileLoginScreen({ navigation }) {
   const [username, setUsername] = useState('');
@@ -45,12 +48,82 @@ export default function MobileLoginScreen({ navigation }) {
   const handleLogin = () => {
     if (!validateForm()) return;
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      console.log('Login attempted with:', { username, password });
-      // navigate to Home after successful login
-      if (navigation && navigation.replace) navigation.replace('Home');
-    }, 1500);
+    (async () => {
+      try {
+        const uname = username.trim();
+        const pwd = password.trim();
+
+        // Fetch the user document by username (documentId = username)
+        const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/mobileUsers/${encodeURIComponent(uname)}?key=${firebaseConfig.apiKey}`;
+        // add a timeout so slow networks fail fast and user isn't stuck waiting
+        const controller = new AbortController();
+        const TIMEOUT_MS = 8000; // 8 seconds
+        const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        let res;
+        try {
+          res = await fetch(url, { signal: controller.signal });
+        } catch (fetchErr) {
+          if (fetchErr.name === 'AbortError') {
+            alert('Login timed out. Check your network connection and try again.');
+            return;
+          }
+          throw fetchErr;
+        } finally {
+          clearTimeout(timeout);
+        }
+        if (!res.ok) {
+          // more specific message for not found vs network
+          if (res.status === 404) {
+            // user document not found
+            alert('Invalid username or password');
+            return;
+          }
+          const text = await res.text();
+          console.error('Login fetch failed', res.status, text);
+          throw new Error('Invalid username or network error');
+        }
+        const doc = await res.json();
+        // debug: log the returned document when password mismatch occurs
+        // eslint-disable-next-line no-console
+        console.log('Login fetched doc:', doc);
+
+        const storedPw = doc.fields?.password?.stringValue;
+        if (!storedPw) {
+          console.error('No password field on user document', doc);
+          alert('Account found but no password is set. Contact admin.');
+          return;
+        }
+
+        // compare trimmed values to avoid stray whitespace mismatches
+        if (storedPw.trim() !== pwd) {
+          // helpful console output for debugging (do NOT keep in production)
+          console.error('Password mismatch', { stored: storedPw, entered: pwd });
+          alert('Invalid username or password');
+          return;
+        }
+
+        // Save a simple session (profile) in AsyncStorage
+        const profile = {
+          username: uname,
+          firstName: doc.fields?.firstName?.stringValue || '',
+          lastName: doc.fields?.lastName?.stringValue || '',
+          email: doc.fields?.email?.stringValue || '',
+          phone: doc.fields?.contactNumber?.stringValue || '',
+          address: doc.fields?.address?.stringValue || '',
+          zone: doc.fields?.zone?.stringValue || '',
+          emergencyContact: doc.fields?.emergencyContact?.stringValue || ''
+        };
+        await AsyncStorage.setItem('mobileUser', JSON.stringify(profile));
+
+        // navigate to Home
+        if (navigation && navigation.replace) navigation.replace('Home');
+      } catch (err) {
+        console.error('Login error', err);
+        alert('Failed to login. Check your credentials or try again later.');
+      } finally {
+        setIsLoading(false);
+      }
+    })();
   };
 
   return (
@@ -61,9 +134,13 @@ export default function MobileLoginScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <View style={styles.logoRow}>
-            <View style={styles.logoBox}><Text style={styles.logoText}>S</Text></View>
+            <View style={styles.logoBox}>
+              <Image source={require('./assets/shs_logo.png')} style={styles.logoImage} resizeMode="contain" />
+            </View>
             <View style={styles.separator} />
-            <View style={styles.logoBox}><Text style={styles.logoText}>A</Text></View>
+            <View style={styles.logoBox}>
+              <Image source={require('./assets/alertx_logo.png')} style={styles.logoImage} resizeMode="contain" />
+            </View>
           </View>
           <Text style={styles.welcomeTitle}>Welcome to AlertX</Text>
           <Text style={styles.welcomeSubtitle}>Senior High School Emergency System</Text>
@@ -161,15 +238,16 @@ const styles = StyleSheet.create({
   header: { paddingTop: 40, paddingBottom: 16, alignItems: 'center' },
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   logoBox: {
-    width: 64,
-    height: 64,
-    borderRadius: 18,
+    width: 80,
+    height: 80,
+    borderRadius: 20,
     backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   logoText: { color: '#fff', fontWeight: '700', fontSize: 24 },
-  separator: { width: 1, height: 48, backgroundColor: 'rgba(255,255,255,0.3)', marginHorizontal: 12 },
+  logoImage: { width: 72, height: 72, borderRadius: 16 },
+  separator: { width: 1, height: 64, backgroundColor: 'rgba(255,255,255,0.3)', marginHorizontal: 12 },
   welcomeTitle: { color: '#fff', fontSize: 20, fontWeight: '700', marginTop: 8 },
   welcomeSubtitle: { color: 'rgba(255,255,255,0.9)', fontSize: 13 },
 

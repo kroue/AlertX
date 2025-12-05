@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   Switch,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import firebaseConfig from './firebase-config';
 
 export default function ProfilePage({ navigation }) {
   const [activeTab, setActiveTab] = useState('profile');
@@ -21,18 +23,112 @@ export default function ProfilePage({ navigation }) {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   const [userInfo, setUserInfo] = useState({
-    name: 'Juan dela Cruz',
-    email: 'juan.delacruz@email.com',
-    phone: '+63 912 345 6789',
-    address: 'Zone 5-C, Barangay Osmeña, Davao City',
-    emergencyContact: '+63 912 987 6543',
+    name: '',
+    email: '',
+    phone: '',
+    address: '',
+    zone: '',
+    emergencyContact: '',
   });
 
   const [editedInfo, setEditedInfo] = useState({ ...userInfo });
+  const [username, setUsername] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const handleSave = () => {
-    setUserInfo(editedInfo);
-    setEditing(false);
+  // Load profile from AsyncStorage (set on login)
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem('mobileUser');
+        if (!raw) {
+          // no session, send back to login
+          if (navigation && navigation.replace) navigation.replace('Login');
+          return;
+        }
+        const profile = JSON.parse(raw);
+        const name = [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() || profile.username || '';
+        const info = {
+          name,
+          email: profile.email || '',
+          phone: profile.phone || '',
+          address: profile.address || '',
+          zone: profile.zone || '',
+          emergencyContact: profile.emergencyContact || '',
+        };
+        if (mounted) {
+          setUserInfo(info);
+          setEditedInfo(info);
+          setUsername(profile.username || '');
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to load profile from storage', err);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  const handleSave = async () => {
+    // persist editedInfo to Firestore (mobileUsers/{username}) and update AsyncStorage
+    if (!username) {
+      alert('Missing username; cannot save profile');
+      return;
+    }
+    setSaving(true);
+    try {
+      // split name into first/last
+      const parts = (editedInfo.name || '').trim().split(/\s+/);
+      const firstName = parts.shift() || '';
+      const lastName = parts.join(' ') || '';
+
+      const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/mobileUsers/${encodeURIComponent(username)}?key=${firebaseConfig.apiKey}`;
+      const body = {
+        fields: {
+          firstName: { stringValue: firstName },
+          lastName: { stringValue: lastName },
+          username: { stringValue: username },
+          email: { stringValue: editedInfo.email || '' },
+          contactNumber: { stringValue: editedInfo.phone || '' },
+          zone: { stringValue: editedInfo.zone || '' },
+          address: { stringValue: editedInfo.address || '' },
+          emergencyContact: { stringValue: editedInfo.emergencyContact || '' }
+        }
+      };
+
+      const res = await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        console.error('Failed to update profile', res.status, text);
+        throw new Error('Failed to save profile');
+      }
+
+      // update local state and AsyncStorage
+      setUserInfo(editedInfo);
+      setEditing(false);
+      const stored = await AsyncStorage.getItem('mobileUser');
+      const session = stored ? JSON.parse(stored) : {};
+      const updatedSession = {
+        ...session,
+        firstName,
+        lastName,
+        email: editedInfo.email || '',
+        phone: editedInfo.phone || '',
+        address: editedInfo.address || '',
+        zone: editedInfo.zone || '',
+        emergencyContact: editedInfo.emergencyContact || ''
+      };
+      await AsyncStorage.setItem('mobileUser', JSON.stringify(updatedSession));
+    } catch (err) {
+      console.error('Error saving profile', err);
+      alert('Failed to save profile. Try again later.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleCancel = () => {
@@ -49,7 +145,7 @@ export default function ProfilePage({ navigation }) {
     <ScrollView contentContainerStyle={styles.container}>
       {/* Header */}
       <View style={styles.headerWrap}>
-        <View style={styles.headerRow}>
+          <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconBtn}>
             <Feather name="arrow-left" size={18} color="#fff" />
           </TouchableOpacity>
@@ -59,14 +155,8 @@ export default function ProfilePage({ navigation }) {
         </View>
 
         <View style={styles.avatarWrap}>
-          <View style={styles.avatarCircle}>
-            <Feather name="user" size={36} color="#fff" />
-          </View>
-          <TouchableOpacity style={styles.cameraBtn}>
-            <Feather name="camera" size={14} color="#fff" />
-          </TouchableOpacity>
           <Text style={styles.userName}>{userInfo.name}</Text>
-          <Text style={styles.userSubtitle}>Resident, Barangay Osmeña</Text>
+          <Text style={styles.userSubtitle}>Resident, Barangay 26</Text>
         </View>
       </View>
 
@@ -148,65 +238,7 @@ export default function ProfilePage({ navigation }) {
           </View>
         </View>
 
-        {/* Settings Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Settings</Text>
-          </View>
-          <View style={styles.settingsList}>
-            <View style={styles.settingRow}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.iconBox, { backgroundColor: '#DBEAFE' }]}>
-                  <Feather name="bell" size={16} color="#2563EB" />
-                </View>
-                <View>
-                  <Text style={styles.settingTitle}>Notifications</Text>
-                  <Text style={styles.settingSubtitle}>Push notifications</Text>
-                </View>
-              </View>
-              <Switch value={notificationsEnabled} onValueChange={setNotificationsEnabled} thumbColor="#fff" trackColor={{ false: '#D1D5DB', true: '#60A5FA' }} />
-            </View>
-
-            <View style={styles.settingRow}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.iconBox, { backgroundColor: '#FEE2E2' }]}>
-                  <Feather name="shield" size={16} color="#DC2626" />
-                </View>
-                <View>
-                  <Text style={styles.settingTitle}>Emergency Alerts</Text>
-                  <Text style={styles.settingSubtitle}>Critical notifications</Text>
-                </View>
-              </View>
-              <Switch value={emergencyAlerts} onValueChange={setEmergencyAlerts} thumbColor="#fff" trackColor={{ false: '#D1D5DB', true: '#F87171' }} />
-            </View>
-
-            <View style={styles.settingRow}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.iconBox, { backgroundColor: '#DCFCE7' }]}>
-                  <Feather name="globe" size={16} color="#16A34A" />
-                </View>
-                <View>
-                  <Text style={styles.settingTitle}>Location Sharing</Text>
-                  <Text style={styles.settingSubtitle}>Share location in reports</Text>
-                </View>
-              </View>
-              <Switch value={locationSharing} onValueChange={setLocationSharing} thumbColor="#fff" trackColor={{ false: '#D1D5DB', true: '#4ADE80' }} />
-            </View>
-
-            <View style={styles.settingRow}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.iconBox, { backgroundColor: '#111827' }]}>
-                  <Feather name="moon" size={16} color="#fff" />
-                </View>
-                <View>
-                  <Text style={styles.settingTitle}>Dark Mode</Text>
-                  <Text style={styles.settingSubtitle}>Coming soon</Text>
-                </View>
-              </View>
-              <Switch value={darkMode} onValueChange={setDarkMode} disabled thumbColor="#fff" trackColor={{ false: '#D1D5DB', true: '#111827' }} />
-            </View>
-          </View>
-        </View>
+        {/* Settings removed per request */}
 
         {/* Recent Activity */}
         <View style={styles.card}>
@@ -254,7 +286,20 @@ export default function ProfilePage({ navigation }) {
               <TouchableOpacity style={styles.modalCancel} onPress={() => setShowLogoutModal(false)}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalConfirm} onPress={() => { setShowLogoutModal(false); /* handle logout */ }}>
+              <TouchableOpacity
+                style={styles.modalConfirm}
+                onPress={async () => {
+                  // clear session and navigate to Login
+                  try {
+                    await AsyncStorage.removeItem('mobileUser');
+                  } catch (err) {
+                    // eslint-disable-next-line no-console
+                    console.error('Failed to clear session', err);
+                  }
+                  setShowLogoutModal(false);
+                  if (navigation && navigation.replace) navigation.replace('Login');
+                }}
+              >
                 <Text style={styles.modalConfirmText}>Log Out</Text>
               </TouchableOpacity>
             </View>
@@ -270,13 +315,13 @@ const styles = StyleSheet.create({
   headerWrap: { backgroundColor: '#06b6d4', paddingBottom: 24, paddingTop: 24 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16 },
   iconBtn: { padding: 8 },
-  avatarWrap: { alignItems: 'center', marginTop: 12 },
+  avatarWrap: { alignItems: 'center', marginTop: 24 },
   avatarCircle: { width: 96, height: 96, borderRadius: 48, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.25)' },
   cameraBtn: { position: 'absolute', right: 110, top: 64, width: 36, height: 36, borderRadius: 18, backgroundColor: '#06b6d4', alignItems: 'center', justifyContent: 'center' },
   userName: { marginTop: 12, color: '#fff', fontSize: 20, fontWeight: '700' },
   userSubtitle: { color: 'rgba(255,255,255,0.9)', fontSize: 12 },
 
-  content: { padding: 16, marginTop: -48 },
+  content: { padding: 16, marginTop: -24 },
   card: { backgroundColor: '#fff', borderRadius: 16, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E5E7EB' },
   cardHeader: { backgroundColor: '#F9FAFB', padding: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cardTitle: { fontSize: 16, fontWeight: '700', color: '#111827' },

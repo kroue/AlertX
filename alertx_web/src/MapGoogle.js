@@ -114,10 +114,6 @@ export default function MapGoogle({ markers = [], setMarkers = () => {}, center 
           onMapLoad(map);
         }} />
       </div>
-      <div className="cc-map-toolbar">
-        <button type="button" className="cc-map-btn" onClick={() => { if (overlaysRef.current.length === 0) { alert('Draw a polygon then Save'); return; } /* noop */ }}>Boundary set</button>
-        <button type="button" className="cc-map-btn cc-map-btn--danger" onClick={clearSavedPolygon}>Clear Boundary</button>
-      </div>
       <div className="cc-map-hint">Use the drawing control to trace Brgy 26; polygon is saved locally. Click map to add markers.</div>
     </div>
   );

@@ -60,10 +60,6 @@ export default function EmergencyInfoModern({ navigation }) {
           </TouchableOpacity>
           <Text style={styles.title}>Emergency Info</Text>
         </View>
-        <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.iconBtn}><Feather name="globe" size={18} color="#374151" /></TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn}><Feather name="sun" size={18} color="#374151" /></TouchableOpacity>
-        </View>
       </View>
 
       {/* Tabs */}

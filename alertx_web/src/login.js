@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import './login.css';
 import { Eye, EyeOff, LogIn, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { auth } from './firebase-config';
 
 function Login() {
@@ -32,9 +32,22 @@ function Login() {
     if (e && e.preventDefault) e.preventDefault();
     if (!validateForm()) return;
     setIsLoading(true);
-    signInWithEmailAndPassword(auth, email, password)
+    // Persist the user's session in the browser so navigation and reloads
+    // retain the signed-in state (necessary for emergency actions).
+    setPersistence(auth, browserLocalPersistence)
+      .then(() => {
+        return signInWithEmailAndPassword(auth, email, password);
+      })
       .then((userCredential) => {
         setIsLoading(false);
+        // Store a small flag in localStorage for UI checks (controlcenter
+        // already clears storage on logout). We still rely on Firebase
+        // auth for actual security checks.
+        try {
+          localStorage.setItem('alertx_user', JSON.stringify({ uid: userCredential.user.uid, email: userCredential.user.email }));
+        } catch (e) {
+          // ignore storage errors
+        }
         // userCredential.user contains user info
         console.log('Firebase login successful:', userCredential.user);
         navigate('/controlcenter');

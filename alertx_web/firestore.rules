@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isValidAlert() {
+      return request.resource.data.keys().hasAll([
+        'type', 'zones', 'message', 'mapPoints', 'createdAt', 'sentBy', 'status'
+      ])
+      && request.resource.data.type is string
+      && request.resource.data.message is string
+      && request.resource.data.message.size() <= 1000
+      && request.resource.data.zones is list
+      && request.resource.data.zones.size() > 0
+      // mapPoints is expected to be a list (can be empty)
+      && request.resource.data.mapPoints is list
+      // sentBy must match the authenticated user's UID
+      && request.resource.data.sentBy == request.auth.uid
+      && request.resource.data.status in ['queued', 'sent', 'cancelled']
+      && request.resource.data.createdAt is timestamp;
+    }
+
+    match /alerts/{alertId} {
+      // allow signed-in users to create alerts (and read alerts)
+      allow create: if request.auth != null && isValidAlert();
+      // Development: temporarily allow public reads so the mobile app can
+      // fetch alerts while developing. IMPORTANT: remove or tighten this
+      // rule before production — prefer requiring authentication.
+      allow read: if true;
+      // Disallow client-side updates/deletes (use server or admin tools)
+      allow update, delete: if false;
+    }
+
+    // Temporary: allow unauthenticated clients to create/read warnings.
+    // This is intentionally permissive for short-term development only.
+    // Do NOT keep this in production; tighten rules as soon as possible.
+    match /warnings/{warningId} {
+      allow create: if true;
+      allow read: if true;
+      allow update, delete: if false;
+    }
+
+    // Temporary: allow unauthenticated mobile client to create mobile user docs
+    // used by the React Native app auth flow during development.
+    match /mobileUsers/{userId} {
+      // Development: allow create/read/update from clients. This lets the
+      // mobile app create and later update the profile documents.
+      // DO NOT keep this rule in production. Replace with a secure rule
+      // (require authentication and validate schema) before shipping.
+      allow create: if true;
+      allow read: if true;
+      allow update: if true;
+      allow delete: if false;
+    }
+
+    // Temporary: allow unauthenticated clients to create/read incidents from mobile app
+    // WARNING: This is permissive and intended for development only. Remove or tighten
+    // these rules before deploying to production. Prefer requiring authentication
+    // and validating the document schema.
+    match /incidents/{incidentId} {
+      // allow clients to create incident reports
+      allow create: if true;
+      // allow reading incident documents for mobile apps during development
+      allow read: if true;
+      // disallow client-side updates/deletes — handle via admin or server
+      allow update, delete: if false;
+    }
+
+    // default deny for everything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,25 @@
+rules_version = '2';
+
+// Firebase Storage Security Rules for AlertX
+// Allow authenticated users to upload alert/warning map images
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Alert map images - only authenticated users can write
+    match /alert-maps/{imageId} {
+      allow read: if true; // Anyone can read (for mobile app display)
+      allow write: if request.auth != null; // Only authenticated users can upload
+    }
+    
+    // Warning map images - only authenticated users can write
+    match /warning-maps/{imageId} {
+      allow read: if true; // Anyone can read (for mobile app display)
+      allow write: if request.auth != null; // Only authenticated users can upload
+    }
+    
+    // Deny all other paths by default
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
