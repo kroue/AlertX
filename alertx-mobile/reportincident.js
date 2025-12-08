@@ -214,18 +214,27 @@ export default function ReportIncidentModern({ navigation }) {
 
       console.log('Image manipulated:', manipulated.uri);
 
-      // For web, we need to fetch the image as a blob
-      const response = await fetch(manipulated.uri);
-      const blob = await response.blob();
-      
+      // Create FormData properly for React Native
       const formData = new FormData();
-      formData.append('file', blob, 'upload.jpg');
+      
+      // Extract filename from URI
+      const uriParts = manipulated.uri.split('/');
+      const filename = uriParts[uriParts.length - 1];
+      
+      formData.append('file', {
+        uri: manipulated.uri,
+        type: 'image/jpeg',
+        name: filename || 'upload.jpg',
+      });
       formData.append('upload_preset', 'alertx_maps');
 
       console.log('Uploading to Cloudinary...');
       const uploadResponse = await fetch('https://api.cloudinary.com/v1_1/dfejxqixw/image/upload', {
         method: 'POST',
         body: formData,
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
       });
 
       console.log('Cloudinary response status:', uploadResponse.status);
@@ -272,80 +281,20 @@ export default function ReportIncidentModern({ navigation }) {
       let mapImageUrl = null;
       if (mapRef.current && markerCoord) {
         try {
-          console.log('Capturing map...');
+          console.log('Capturing map screenshot...');
+          const tmpMapUri = await captureRef(mapRef, {
+            format: 'png',
+            quality: 0.9,
+          });
           
-          // Check if we're on web (captureRef may not work well on web)
-          if (typeof window !== 'undefined' && window.document) {
-            // For web, convert the element to canvas using html2canvas or similar
-            // Since we're on web, we can use the DOM element directly
-            const canvas = document.createElement('canvas');
-            const mapElement = mapRef.current;
-            
-            // Get the actual DOM element (may be wrapped)
-            let domElement = mapElement;
-            if (mapElement._touchableNode) {
-              domElement = mapElement._touchableNode;
-            } else if (mapElement._nativeTag) {
-              domElement = document.querySelector(`[data-tag="${mapElement._nativeTag}"]`);
-            }
-            
-            if (domElement && domElement instanceof HTMLElement) {
-              const rect = domElement.getBoundingClientRect();
-              canvas.width = rect.width;
-              canvas.height = rect.height;
-              
-              const ctx = canvas.getContext('2d');
-              
-              // Draw background
-              ctx.fillStyle = '#F3F4F6';
-              ctx.fillRect(0, 0, canvas.width, canvas.height);
-              
-              // Find and draw the image
-              const imgElement = domElement.querySelector('img');
-              if (imgElement) {
-                ctx.drawImage(imgElement, 0, 0, canvas.width, canvas.height);
-                
-                // Draw the marker if present
-                if (markerCoord) {
-                  ctx.fillStyle = '#ef4444';
-                  ctx.strokeStyle = '#fff';
-                  ctx.lineWidth = 2;
-                  ctx.beginPath();
-                  ctx.arc(markerCoord.x, markerCoord.y, 12, 0, 2 * Math.PI);
-                  ctx.fill();
-                  ctx.stroke();
-                }
-              }
-              
-              // Convert canvas to blob
-              const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png', 0.9));
-              
-              // Upload the blob
-              if (blob) {
-                const formData = new FormData();
-                formData.append('file', blob, 'map.png');
-                formData.append('upload_preset', 'alertx_maps');
-                
-                const uploadResponse = await fetch('https://api.cloudinary.com/v1_1/dfejxqixw/image/upload', {
-                  method: 'POST',
-                  body: formData,
-                });
-                
-                if (uploadResponse.ok) {
-                  const data = await uploadResponse.json();
-                  mapImageUrl = data.secure_url;
-                  console.log('Map uploaded successfully:', mapImageUrl);
-                } else {
-                  console.error('Map upload failed:', await uploadResponse.text());
-                }
-              }
-            }
-          } else {
-            // For native mobile, use captureRef
-            const tmpMapUri = await captureRef(mapRef.current, { format: 'png', quality: 0.9, result: 'tmpfile' });
-            if (tmpMapUri) {
-              mapImageUrl = await uploadToCloudinary(tmpMapUri);
+          console.log('Map captured:', tmpMapUri);
+          
+          if (tmpMapUri) {
+            mapImageUrl = await uploadToCloudinary(tmpMapUri);
+            if (mapImageUrl) {
               console.log('Map uploaded successfully:', mapImageUrl);
+            } else {
+              console.warn('Failed to upload map to Cloudinary');
             }
           }
         } catch (e) {
@@ -475,17 +424,21 @@ export default function ReportIncidentModern({ navigation }) {
               onLayout={onImageLayout}
               style={{ position: 'relative', width: '100%', height: 220 }}
             >
-              <View ref={(r) => { mapRef.current = r; }} style={{ width: '100%', height: '100%' }}>
+              <View 
+                ref={mapRef}
+                collapsable={false}
+                style={{ width: '100%', height: '100%' }}
+              >
                 <Image 
                   source={require('./assets/brgy26_map.png')} 
                   style={{ width: '100%', height: '100%' }} 
                   resizeMode="cover"
                 />
+                {/* marker overlay */}
+                {markerCoord ? (
+                  <View style={[styles.marker, { position: 'absolute', left: markerCoord.x - 12, top: markerCoord.y - 12 }]} />
+                ) : null}
               </View>
-              {/* marker overlay */}
-              {markerCoord ? (
-                <View pointerEvents="none" style={[styles.marker, { position: 'absolute', left: markerCoord.x - 12, top: markerCoord.y - 12 }]} />
-              ) : null}
             </Pressable>
             <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={{ fontSize: 12, color: '#6B7280' }}>Tap map to place pin</Text>

@@ -5,6 +5,7 @@ import Login from './login';
 import ControlCenter from './controlcenter';
 import EmergencyAlertPage from './emergency';
 import WarningPage from './warning';
+import Residents from './residents';
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
   <Route path="/controlcenter" element={<ControlCenter />} />
   <Route path="/emergency" element={<EmergencyAlertPage />} />
   <Route path="/warning" element={<WarningPage />} />
+  <Route path="/residents" element={<Residents />} />
       </Routes>
     </BrowserRouter>
   );

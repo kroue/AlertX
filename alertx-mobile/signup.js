@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
+  Image,
   TextInput,
   TouchableOpacity,
   StyleSheet,
@@ -10,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import firebaseConfig from './firebase-config';
 
 export default function SignupScreen({ navigation }) {
@@ -121,9 +123,13 @@ export default function SignupScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <View style={styles.logoRow}>
-            <View style={styles.logoBox}><Text style={styles.logoText}>S</Text></View>
+            <View style={styles.logoBox}>
+              <Image source={require('./assets/shs_logo.png')} style={styles.logoImage} resizeMode="contain" />
+            </View>
             <View style={styles.separator} />
-            <View style={styles.logoBox}><Text style={styles.logoText}>A</Text></View>
+            <View style={styles.logoBox}>
+              <Image source={require('./assets/alertx_logo.png')} style={styles.logoImage} resizeMode="contain" />
+            </View>
           </View>
           <Text style={styles.welcomeTitle}>Create an AlertX account</Text>
           <Text style={styles.welcomeSubtitle}>Register to access AlertX features</Text>
@@ -185,12 +191,22 @@ export default function SignupScreen({ navigation }) {
             {errors.contactNumber ? <Text style={styles.errorText}>{errors.contactNumber}</Text> : null}
 
             <Text style={[styles.label, { marginTop: 12 }]}>Zone</Text>
-            <TextInput
-              value={zone}
-              onChangeText={(t) => { setZone(t); if (errors.zone) setErrors({ ...errors, zone: '' }); }}
-              placeholder="Zone"
-              style={[styles.input, errors.zone ? styles.inputError : null]}
-            />
+            <View style={[styles.pickerContainer, errors.zone ? styles.inputError : null]}>
+              <Picker
+                selectedValue={zone}
+                onValueChange={(itemValue) => {
+                  setZone(itemValue);
+                  if (errors.zone) setErrors({ ...errors, zone: '' });
+                }}
+                style={styles.picker}
+              >
+                <Picker.Item label="Select a zone" value="" />
+                <Picker.Item label="Zone 1" value="Zone 1" />
+                <Picker.Item label="Zone 2" value="Zone 2" />
+                <Picker.Item label="Zone 3" value="Zone 3" />
+                <Picker.Item label="Zone 4" value="Zone 4" />
+              </Picker>
+            </View>
             {errors.zone ? <Text style={styles.errorText}>{errors.zone}</Text> : null}
 
             <Text style={[styles.label, { marginTop: 12 }]}>Address</Text>
@@ -259,15 +275,15 @@ const styles = StyleSheet.create({
   header: { paddingTop: 40, paddingBottom: 16, alignItems: 'center' },
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   logoBox: {
-    width: 64,
-    height: 64,
-    borderRadius: 18,
+    width: 80,
+    height: 80,
+    borderRadius: 20,
     backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  logoText: { color: '#fff', fontWeight: '700', fontSize: 24 },
-  separator: { width: 1, height: 48, backgroundColor: 'rgba(255,255,255,0.3)', marginHorizontal: 12 },
+  logoImage: { width: 72, height: 72, borderRadius: 16 },
+  separator: { width: 1, height: 64, backgroundColor: 'rgba(255,255,255,0.3)', marginHorizontal: 12 },
   welcomeTitle: { color: '#fff', fontSize: 20, fontWeight: '700', marginTop: 8 },
   welcomeSubtitle: { color: 'rgba(255,255,255,0.9)', fontSize: 13 },
 
@@ -292,6 +308,16 @@ const styles = StyleSheet.create({
   textarea: { minHeight: 80, textAlignVertical: 'top' },
   inputError: { borderColor: '#FCA5A5' },
   errorText: { color: '#DC2626', marginTop: 6 },
+  pickerContainer: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  picker: {
+    height: 50,
+  },
   loginButton: {
     marginTop: 14,
     backgroundColor: '#2563EB',

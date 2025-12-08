@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertTriangle, Bell, Send, AlertCircle, CheckCircle2, X, FileText, History } from 'lucide-react';
+import { AlertTriangle, Bell, Send, AlertCircle, CheckCircle2, X, FileText, History, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from './firebase-config';
@@ -192,11 +192,18 @@ export default function ControlCenter() {
             <p className="cc-sub">Emergency notification system</p>
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <button className="cc-btn" onClick={() => navigate('/residents')}>
+              <Users size={16} style={{ marginRight: '6px' }} />
+              Residents
+            </button>
             <button className="cc-btn" onClick={() => setShowHistoryModal(true)}>
               <History size={16} style={{ marginRight: '6px' }} />
               History
             </button>
-            <button className="cc-btn" onClick={() => setShowReportsModal(true)} style={{ position: 'relative' }}>
+            <button className="cc-btn" onClick={() => {
+              setShowReportsModal(true);
+              setReportCount(0);
+            }} style={{ position: 'relative' }}>
               <FileText size={16} style={{ marginRight: '6px' }} />
               Reports
               {reportCount > 0 && (
