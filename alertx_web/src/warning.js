@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import Map from './Map';
 import MapGoogle from './MapGoogle';
 import { auth } from './firebase-config';
-import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
 import html2canvas from 'html2canvas';
 
 export default function WarningPage() {
@@ -105,7 +105,7 @@ export default function WarningPage() {
         }
       }
       
-      await addDoc(collection(db, 'warnings'), {
+      const warningDoc = await addDoc(collection(db, 'warnings'), {
         type: warningType,
         zones: selectedZones,
         message,
@@ -116,6 +116,55 @@ export default function WarningPage() {
         sentBy: auth?.currentUser?.uid || null,
         status: 'queued'
       });
+
+      // Send push notifications directly to all mobile users
+      try {
+        const mobileUsersSnapshot = await getDocs(collection(db, 'mobileUsers'));
+        const pushTokens = [];
+        mobileUsersSnapshot.forEach(doc => {
+          const userData = doc.data();
+          if (userData.pushToken && userData.pushToken.startsWith('ExponentPushToken[')) {
+            pushTokens.push(userData.pushToken);
+          }
+        });
+
+        if (pushTokens.length > 0) {
+          // Send to Expo Push API
+          const notifications = pushTokens.map(token => ({
+            to: token,
+            sound: 'default',
+            title: message.split('\n')[0] || 'WARNING',
+            body: message || 'A new warning has been issued in your area.',
+            data: {
+              warningId: warningDoc.id,
+              type: warningType,
+              zones: selectedZones.join(', '),
+              timestamp: Date.now(),
+              source: 'warnings'
+            },
+            priority: 'high',
+            channelId: 'alert-channel'
+          }));
+
+          const response = await fetch('https://exp.host/--/api/v2/push/send', {
+            method: 'POST',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(notifications)
+          });
+
+          if (response.ok) {
+            console.log(`Push notifications sent to ${pushTokens.length} devices`);
+          } else {
+            console.error('Failed to send push notifications:', await response.text());
+          }
+        }
+      } catch (pushError) {
+        console.error('Error sending push notifications:', pushError);
+        // Don't fail the warning if push notifications fail
+      }
 
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);

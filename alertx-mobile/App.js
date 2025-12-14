@@ -88,16 +88,33 @@ export default function App() {
           importance: Notifications.AndroidImportance.MAX,
           vibrationPattern: [0, 250, 250, 250],
           lightColor: '#FF231F7C',
+          enableVibrate: true,
+          enableLights: true,
+          showBadge: true,
         });
         
+        // Critical alert channel for emergencies - MUST ring every time
         await Notifications.setNotificationChannelAsync('alert-channel', {
-          name: 'Alerts',
+          name: 'Emergency Alerts',
           importance: Notifications.AndroidImportance.MAX,
-          sound: 'alert.mp3',
-          vibrationPattern: [0, 250, 250, 250],
+          sound: 'default', // Use default system sound for reliability
+          vibrationPattern: [0, 500, 500, 500], // Longer vibration pattern
           enableVibrate: true,
+          enableLights: true,
+          lightColor: '#FF0000',
+          showBadge: true,
+          bypassDnd: true, // Bypass Do Not Disturb mode
         });
       }
+      
+      // Set global notification handler for when app is in foreground
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+        }),
+      });
       
       // Request permissions
       if (Device.isDevice) {

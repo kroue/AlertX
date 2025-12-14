@@ -24,8 +24,13 @@ export default function ActiveAlertsPage({ navigation }) {
 
   useEffect(() => {
     // Set a notification handler so notifications show while app is foregrounded
+    // CRITICAL: This ensures ALL notifications ring, even when app is open
     Notifications.setNotificationHandler({
-      handleNotification: async () => ({ shouldShowAlert: true, shouldPlaySound: true, shouldSetBadge: false })
+      handleNotification: async () => ({ 
+        shouldShowAlert: true, 
+        shouldPlaySound: true, 
+        shouldSetBadge: true 
+      })
     });
 
     const requestNotificationPermissions = async () => {
@@ -57,10 +62,32 @@ export default function ActiveAlertsPage({ navigation }) {
     // try registering for push token and saving it to mobileUsers if logged in
     const registerPushToken = async () => {
       try {
-        if (!Device.isDevice) return;
-  const tokenObj = await Notifications.getExpoPushTokenAsync();
-  const token = tokenObj.data;
-  setPushToken(token);
+        console.log('=== PUSH TOKEN REGISTRATION START ===');
+        console.log('Attempting to register push token...');
+        console.log('Device.isDevice:', Device.isDevice);
+        console.log('Platform:', Platform.OS);
+        
+        // Get push token using experienceId for development builds
+        let tokenObj;
+        try {
+          tokenObj = await Notifications.getExpoPushTokenAsync();
+          console.log('Token object received:', tokenObj);
+        } catch (tokenError) {
+          console.error('Error getting Expo push token:', tokenError);
+          // Fallback: For development, still save user so notification system is testable
+          console.log('Skipping push token for now - will work with Expo Go or after proper FCM setup');
+          return;
+        }
+        
+        const token = tokenObj?.data;
+        console.log('Got push token:', token);
+        
+        if (!token) {
+          console.error('Push token is null or undefined!');
+          return;
+        }
+        
+        setPushToken(token);
         // create Android channel for standalone builds with alert sound
         if (Platform.OS === 'android') {
           try {
@@ -82,13 +109,19 @@ export default function ActiveAlertsPage({ navigation }) {
             const username = user.username || user.user || user.name || user.id;
             if (username) {
               const base = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents`;
-              const url = `${base}/mobileUsers/${encodeURIComponent(username)}?key=${firebaseConfig.apiKey}`;
-              // PATCH to update pushToken field
-              await fetch(url, {
+              const url = `${base}/mobileUsers/${encodeURIComponent(username)}?updateMask.fieldPaths=pushToken&key=${firebaseConfig.apiKey}`;
+              // PATCH to update pushToken field - using updateMask to only update this field
+              console.log('Saving push token to Firestore for user:', username);
+              const response = await fetch(url, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ fields: { pushToken: { stringValue: token } } })
               });
+              if (response.ok) {
+                console.log('✅ Push token saved successfully!');
+              } else {
+                console.error('Failed to save push token:', response.status, await response.text());
+              }
             }
           } catch (e) {
             // eslint-disable-next-line no-console
@@ -97,7 +130,9 @@ export default function ActiveAlertsPage({ navigation }) {
         }
       } catch (e) {
         // eslint-disable-next-line no-console
-        console.log('Error getting push token', e);
+        console.error('=== PUSH TOKEN REGISTRATION FAILED ===');
+        console.error('Error getting push token:', e);
+        console.error('Error details:', e.message, e.stack);
       }
     };
 
@@ -200,6 +235,24 @@ export default function ActiveAlertsPage({ navigation }) {
                   title: doc.title || (doc.message ? String(doc.message).split('\n')[0] : 'Alert'),
                   description: doc.description || doc.message || ''
                 };
+                // Schedule notification to ensure it rings even when app is open
+                try {
+                  await Notifications.scheduleNotificationAsync({
+                    content: {
+                      title: parsed.title || 'EMERGENCY ALERT',
+                      body: parsed.description || 'New alert received',
+                      data: { id: parsed.id, type: parsed.type },
+                      sound: 'default',
+                      priority: Notifications.AndroidNotificationPriority.MAX,
+                      vibrate: [0, 500, 500, 500],
+                      badge: 1,
+                    },
+                    trigger: null,
+                    channelId: 'alert-channel',
+                  });
+                } catch (e) {
+                  console.log('Failed to schedule realtime notification', e);
+                }
                 setCurrentAlert(parsed);
                 setAlertModalVisible(true);
                 await playAlertSound();
@@ -306,11 +359,16 @@ export default function ActiveAlertsPage({ navigation }) {
               try {
                 await Notifications.scheduleNotificationAsync({
                   content: {
-                    title: a.title || 'New Alert',
+                    title: a.title || 'EMERGENCY ALERT',
                     body: a.description ? (a.description.length > 120 ? a.description.slice(0, 117) + '...' : a.description) : 'A new alert has been issued in your area.',
-                    data: { id: a.id, source: a.source }
+                    data: { id: a.id, source: a.source },
+                    sound: 'default',
+                    priority: Notifications.AndroidNotificationPriority.MAX,
+                    vibrate: [0, 500, 500, 500],
+                    badge: 1,
                   },
-                  trigger: null
+                  trigger: null,
+                  channelId: 'alert-channel',
                 });
                 // also show in-app modal if app is foreground
                 setCurrentAlert(a);
@@ -339,11 +397,16 @@ export default function ActiveAlertsPage({ navigation }) {
               try {
                 await Notifications.scheduleNotificationAsync({
                   content: {
-                    title: w.title || 'New Warning',
+                    title: w.title || 'WARNING',
                     body: w.description ? (w.description.length > 120 ? w.description.slice(0, 117) + '...' : w.description) : 'A new warning has been issued in your area.',
-                    data: { id: w.id, source: w.source }
+                    data: { id: w.id, source: w.source },
+                    sound: 'default',
+                    priority: Notifications.AndroidNotificationPriority.MAX,
+                    vibrate: [0, 500, 500, 500],
+                    badge: 1,
                   },
-                  trigger: null
+                  trigger: null,
+                  channelId: 'alert-channel',
                 });
               } catch (e) {
                 // scheduling failed (permissions or other) — log and continue

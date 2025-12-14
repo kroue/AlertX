@@ -5,7 +5,7 @@ import Map from './Map';
 import MapGoogle from './MapGoogle';
 import { useNavigate } from 'react-router-dom';
 import { auth } from './firebase-config';
-import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, serverTimestamp, getDocs } from 'firebase/firestore';
 import html2canvas from 'html2canvas';
 
 export default function EmergencyAlertPage() {
@@ -125,7 +125,7 @@ export default function EmergencyAlertPage() {
       }
       
       // create alert document in Firestore so backend/clients can broadcast
-      await addDoc(collection(db, 'alerts'), {
+      const alertDoc = await addDoc(collection(db, 'alerts'), {
         type: emergencyType,
         zones: selectedZones,
         message,
@@ -137,6 +137,55 @@ export default function EmergencyAlertPage() {
         sentBy: auth.currentUser.uid,
         status: 'queued'
       });
+
+      // Send push notifications directly to all mobile users
+      try {
+        const mobileUsersSnapshot = await getDocs(collection(db, 'mobileUsers'));
+        const pushTokens = [];
+        mobileUsersSnapshot.forEach(doc => {
+          const userData = doc.data();
+          if (userData.pushToken && userData.pushToken.startsWith('ExponentPushToken[')) {
+            pushTokens.push(userData.pushToken);
+          }
+        });
+
+        if (pushTokens.length > 0) {
+          // Send to Expo Push API
+          const notifications = pushTokens.map(token => ({
+            to: token,
+            sound: 'default',
+            title: message.split('\n')[0] || 'EMERGENCY ALERT',
+            body: message || 'A new emergency alert has been issued in your area.',
+            data: {
+              alertId: alertDoc.id,
+              type: emergencyType,
+              zones: selectedZones.join(', '),
+              timestamp: Date.now(),
+              source: 'alerts'
+            },
+            priority: 'high',
+            channelId: 'alert-channel'
+          }));
+
+          const response = await fetch('https://exp.host/--/api/v2/push/send', {
+            method: 'POST',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(notifications)
+          });
+
+          if (response.ok) {
+            console.log(`Push notifications sent to ${pushTokens.length} devices`);
+          } else {
+            console.error('Failed to send push notifications:', await response.text());
+          }
+        }
+      } catch (pushError) {
+        console.error('Error sending push notifications:', pushError);
+        // Don't fail the alert if push notifications fail
+      }
 
       // small UX delay to mimic previous behaviour
       setShowSuccess(true);
