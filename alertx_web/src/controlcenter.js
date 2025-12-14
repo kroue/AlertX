@@ -13,6 +13,7 @@ export default function ControlCenter() {
   const [showReportsModal, setShowReportsModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [historyTab, setHistoryTab] = useState('alerts'); // 'alerts' or 'warnings'
+  const [reportsTab, setReportsTab] = useState('all'); // 'all', 'urgent', or 'normal'
   const [selectedReport, setSelectedReport] = useState(null);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState(null);
   const [emergencyMessage, setEmergencyMessage] = useState('');
@@ -58,13 +59,61 @@ export default function ControlCenter() {
             longitude: fields.longitude?.doubleValue || null,
             photoUrl: fields.photoUrl?.stringValue || null,
             mapImageUrl: fields.mapImageUrl?.stringValue || null,
+            is_read: fields.is_read?.booleanValue || false,
           };
-        });
+        }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         setReports(parsed);
-        setReportCount(parsed.length);
+        const unreadCount = parsed.filter(r => !r.is_read).length;
+        setReportCount(unreadCount);
       }
     } catch (error) {
       console.error('Error fetching reports:', error);
+    }
+  };
+
+  const markReportAsRead = async (reportId) => {
+    try {
+      // Get the current user's ID token for authentication
+      const user = auth.currentUser;
+      if (!user) {
+        console.error('No authenticated user');
+        return;
+      }
+      
+      const idToken = await user.getIdToken();
+      const base = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents`;
+      const docUrl = `${base}/incidents/${reportId}?key=${firebaseConfig.apiKey}`;
+      
+      const updatePayload = {
+        fields: {
+          is_read: { booleanValue: true }
+        }
+      };
+      
+      const res = await fetch(docUrl + '&updateMask.fieldPaths=is_read', {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify(updatePayload)
+      });
+      
+      if (res.ok) {
+        // Update local state
+        setReports(prevReports => {
+          const updated = prevReports.map(r => 
+            r.id === reportId ? { ...r, is_read: true } : r
+          );
+          const unreadCount = updated.filter(r => !r.is_read).length;
+          setReportCount(unreadCount);
+          return updated;
+        });
+      } else {
+        console.error('Failed to mark report as read:', await res.text());
+      }
+    } catch (error) {
+      console.error('Error marking report as read:', error);
     }
   };
 
@@ -361,12 +410,75 @@ export default function ControlCenter() {
                   </div>
                 </div>
 
+                {/* Tabs */}
+                <div style={{ display: 'flex', gap: '12px', marginTop: '20px', borderBottom: '2px solid #E5E7EB' }}>
+                  <button
+                    onClick={() => setReportsTab('all')}
+                    style={{
+                      padding: '12px 24px',
+                      border: 'none',
+                      background: 'none',
+                      cursor: 'pointer',
+                      fontWeight: '700',
+                      fontSize: '14px',
+                      color: reportsTab === 'all' ? '#06b6d4' : '#6B7280',
+                      borderBottom: reportsTab === 'all' ? '2px solid #06b6d4' : 'none',
+                      marginBottom: '-2px'
+                    }}
+                  >
+                    All ({reports.length})
+                  </button>
+                  <button
+                    onClick={() => setReportsTab('urgent')}
+                    style={{
+                      padding: '12px 24px',
+                      border: 'none',
+                      background: 'none',
+                      cursor: 'pointer',
+                      fontWeight: '700',
+                      fontSize: '14px',
+                      color: reportsTab === 'urgent' ? '#ef4444' : '#6B7280',
+                      borderBottom: reportsTab === 'urgent' ? '2px solid #ef4444' : 'none',
+                      marginBottom: '-2px'
+                    }}
+                  >
+                    <AlertTriangle size={16} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
+                    Urgent ({reports.filter(r => r.urgent).length})
+                  </button>
+                  <button
+                    onClick={() => setReportsTab('normal')}
+                    style={{
+                      padding: '12px 24px',
+                      border: 'none',
+                      background: 'none',
+                      cursor: 'pointer',
+                      fontWeight: '700',
+                      fontSize: '14px',
+                      color: reportsTab === 'normal' ? '#06b6d4' : '#6B7280',
+                      borderBottom: reportsTab === 'normal' ? '2px solid #06b6d4' : 'none',
+                      marginBottom: '-2px'
+                    }}
+                  >
+                    Normal ({reports.filter(r => !r.urgent).length})
+                  </button>
+                </div>
+
                 <div style={{ maxHeight: '500px', overflowY: 'auto', marginTop: '20px' }}>
-                  {reports.length === 0 ? (
-                    <p style={{ textAlign: 'center', color: '#6B7280', padding: '40px' }}>No reports available</p>
+                  {reports.filter(report => {
+                    if (reportsTab === 'urgent') return report.urgent;
+                    if (reportsTab === 'normal') return !report.urgent;
+                    return true;
+                  }).length === 0 ? (
+                    <p style={{ textAlign: 'center', color: '#6B7280', padding: '40px' }}>
+                      No {reportsTab === 'urgent' ? 'urgent' : reportsTab === 'normal' ? 'normal' : ''} reports available
+                    </p>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {reports.map((report) => (
+                      {reports.filter(report => {
+                        if (reportsTab === 'urgent') return report.urgent;
+                        if (reportsTab === 'normal') return !report.urgent;
+                        return true;
+                      }).map((report) => (
                         <div 
                           key={report.id}
                           style={{
@@ -375,12 +487,30 @@ export default function ControlCenter() {
                             padding: '16px',
                             cursor: 'pointer',
                             transition: 'all 0.2s',
-                            backgroundColor: report.urgent ? '#FEF2F2' : '#fff'
+                            backgroundColor: report.urgent ? '#FEF2F2' : '#fff',
+                            opacity: report.is_read ? 0.6 : 1,
+                            position: 'relative'
                           }}
-                          onClick={() => setSelectedReport(report)}
+                          onClick={() => {
+                            setSelectedReport(report);
+                            if (!report.is_read) {
+                              markReportAsRead(report.id);
+                            }
+                          }}
                           onMouseEnter={(e) => e.currentTarget.style.borderColor = '#06b6d4'}
                           onMouseLeave={(e) => e.currentTarget.style.borderColor = '#E5E7EB'}
                         >
+                          {!report.is_read && (
+                            <div style={{
+                              position: 'absolute',
+                              top: '16px',
+                              right: '16px',
+                              width: '10px',
+                              height: '10px',
+                              backgroundColor: '#06b6d4',
+                              borderRadius: '50%'
+                            }} />
+                          )}
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '8px' }}>
                             <div>
                               <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#111827', marginBottom: '4px' }}>
@@ -395,6 +525,17 @@ export default function ControlCenter() {
                                     fontSize: '11px',
                                     fontWeight: '700'
                                   }}>URGENT</span>
+                                )}
+                                {!report.is_read && (
+                                  <span style={{
+                                    marginLeft: '8px',
+                                    backgroundColor: '#06b6d4',
+                                    color: 'white',
+                                    padding: '2px 8px',
+                                    borderRadius: '12px',
+                                    fontSize: '11px',
+                                    fontWeight: '700'
+                                  }}>NEW</span>
                                 )}
                               </h4>
                               <p style={{ fontSize: '14px', color: '#6B7280' }}>{report.locationText}</p>

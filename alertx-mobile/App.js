@@ -1,10 +1,13 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View } from 'react-native';
-import React from 'react';
+import { StyleSheet, View, Platform, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import MobileLoginScreen from './login';
 import SignupScreen from './signup';
 import ActiveAlertsPage from './homepage';
@@ -51,10 +54,81 @@ function MainTabs() {
 }
 
 export default function App() {
+  const [isLoading, setIsLoading] = useState(true);
+  const [initialRoute, setInitialRoute] = useState('Login');
+
+  useEffect(() => {
+    // Check for existing user session
+    const checkUserSession = async () => {
+      try {
+        const storedUser = await AsyncStorage.getItem('mobileUser');
+        if (storedUser) {
+          // User is already logged in, go straight to Home
+          setInitialRoute('Home');
+        } else {
+          // No session found, show login
+          setInitialRoute('Login');
+        }
+      } catch (error) {
+        console.error('Error checking user session:', error);
+        // On error, default to login screen
+        setInitialRoute('Login');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkUserSession();
+
+    // Configure Android notification channel for background notifications
+    const setupNotifications = async () => {
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('default', {
+          name: 'default',
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: '#FF231F7C',
+        });
+        
+        await Notifications.setNotificationChannelAsync('alert-channel', {
+          name: 'Alerts',
+          importance: Notifications.AndroidImportance.MAX,
+          sound: 'alert.mp3',
+          vibrationPattern: [0, 250, 250, 250],
+          enableVibrate: true,
+        });
+      }
+      
+      // Request permissions
+      if (Device.isDevice) {
+        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        let finalStatus = existingStatus;
+        if (existingStatus !== 'granted') {
+          const { status } = await Notifications.requestPermissionsAsync();
+          finalStatus = status;
+        }
+        if (finalStatus !== 'granted') {
+          console.log('Notification permissions not granted');
+        }
+      }
+    };
+    
+    setupNotifications();
+  }, []);
+
+  // Show loading screen while checking session
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color="#2563EB" />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <NavigationContainer>
-        <Stack.Navigator initialRouteName="Login" screenOptions={{ headerShown: false }}>
+        <Stack.Navigator initialRouteName={initialRoute} screenOptions={{ headerShown: false }}>
           <Stack.Screen name="Login" component={MobileLoginScreen} />
           <Stack.Screen name="Signup" component={SignupScreen} />
           {/* Home stack route now renders the tab navigator */}
@@ -70,5 +144,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

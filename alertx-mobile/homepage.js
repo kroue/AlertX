@@ -386,7 +386,32 @@ export default function ActiveAlertsPage({ navigation }) {
   const playAlertSound = async () => {
     try {
       if (soundRef.current) return;
-      const { sound } = await Audio.Sound.createAsync(require('./assets/alert.mp3'), { shouldPlay: true, isLooping: true });
+      
+      // Configure audio mode to override silent switch and play at full volume
+      // This ensures emergency alerts play even when phone is muted or volume is 0
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true, // Ignore silent switch on iOS
+        staysActiveInBackground: true, // Keep playing in background
+        shouldDuckAndroid: false, // Don't lower volume for other apps on Android
+        playThroughEarpieceAndroid: false, // Use speaker, not earpiece
+        allowsRecordingIOS: false,
+        interruptionModeIOS: 1, // Don't mix with other audio
+        interruptionModeAndroid: 1, // Don't reduce volume for other apps
+      });
+      
+      const { sound } = await Audio.Sound.createAsync(
+        require('./assets/alert.mp3'), 
+        { 
+          shouldPlay: true, 
+          isLooping: true,
+          volume: 1.0, // Maximum volume regardless of system volume
+          isMuted: false,
+        }
+      );
+      
+      // Set volume to maximum (overrides system volume)
+      await sound.setVolumeAsync(1.0);
+      
       soundRef.current = sound;
     } catch (e) {
       // eslint-disable-next-line no-console
@@ -400,6 +425,17 @@ export default function ActiveAlertsPage({ navigation }) {
       await soundRef.current.stopAsync();
       await soundRef.current.unloadAsync();
       soundRef.current = null;
+      
+      // Reset audio mode to normal after stopping alert
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: false,
+        staysActiveInBackground: false,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+        allowsRecordingIOS: false,
+        interruptionModeIOS: 0,
+        interruptionModeAndroid: 2,
+      });
     } catch (e) {
       // eslint-disable-next-line no-console
       console.log('Failed to stop alert sound', e);
@@ -567,11 +603,8 @@ export default function ActiveAlertsPage({ navigation }) {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>{currentAlert ? currentAlert.title : 'Alert'}</Text>
             <Text style={styles.modalBody}>{currentAlert ? currentAlert.description : 'A new alert has been issued.'}</Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 }}>
-              <TouchableOpacity onPress={async () => { await acknowledgeAlert(); }} style={[styles.modalBtn, { backgroundColor: '#ef4444' }]}>
-                <Text style={{ color: '#fff', fontWeight: '700' }}>Acknowledge</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={async () => { await stopAlertSound(); setAlertModalVisible(false); }} style={[styles.modalBtn, { backgroundColor: '#6B7280' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 16 }}>
+              <TouchableOpacity onPress={async () => { await stopAlertSound(); setAlertModalVisible(false); }} style={[styles.modalBtn, { backgroundColor: '#ef4444' }]}>
                 <Text style={{ color: '#fff', fontWeight: '700' }}>Stop Alert</Text>
               </TouchableOpacity>
             </View>

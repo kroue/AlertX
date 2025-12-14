@@ -61,8 +61,11 @@ service cloud.firestore {
       allow create: if true;
       // allow reading incident documents for mobile apps during development
       allow read: if true;
-      // disallow client-side updates/deletes — handle via admin or server
-      allow update, delete: if false;
+      // allow authenticated users (operators) to update only the is_read field
+      allow update: if request.auth != null 
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['is_read']);
+      // disallow client-side deletes — handle via admin or server
+      allow delete: if false;
     }
 
     // default deny for everything else
