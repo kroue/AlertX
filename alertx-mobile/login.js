@@ -212,16 +212,6 @@ export default function MobileLoginScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.dividerRow}>
-            <View style={styles.divider} />
-            <Text style={styles.dividerText}>New to AlertX?</Text>
-            <View style={styles.divider} />
-          </View>
-
-          <TouchableOpacity style={styles.signupButton} onPress={() => navigation.navigate('Signup')}>
-            <Text style={styles.signupText}>Create an account</Text>
-          </TouchableOpacity>
-
           <View style={styles.footer}>
             <Text style={styles.footerText}>© 2024 Senior High School & AlertX</Text>
             <Text style={styles.footerSmall}>All rights reserved</Text>

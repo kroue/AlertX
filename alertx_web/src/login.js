@@ -147,10 +147,6 @@ function Login() {
               </button>
             </div>
           </form>
-
-          <div className="lx-footer">
-            <p className="lx-footer-text">Don't have an account? <button className="lx-signup">Sign up</button></p>
-          </div>
         </div>
 
         <div className="lx-bottom-text">© 2024 Senior High School & AlertX. All rights reserved.</div>
