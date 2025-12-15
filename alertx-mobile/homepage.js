@@ -183,12 +183,17 @@ export default function ActiveAlertsPage({ navigation }) {
         const firebaseApp = await import('firebase/app');
         const firebaseFirestore = await import('firebase/firestore');
         const { initializeApp, getApps } = firebaseApp;
-        const { getFirestore, collection, query, orderBy, onSnapshot } = firebaseFirestore;
+        const { getFirestore, collection, query, orderBy, limit, onSnapshot } = firebaseFirestore;
 
         if (!getApps().length) initializeApp(firebaseConfig);
         const db = getFirestore();
         const initialSnapshotRef = { current: true };
-        const alertsQuery = query(collection(db, 'alerts'), orderBy('createdAt', 'desc'));
+        // OPTIMIZATION: Limit to 20 most recent alerts instead of fetching all
+        const alertsQuery = query(
+          collection(db, 'alerts'), 
+          orderBy('createdAt', 'desc'),
+          limit(20)
+        );
 
         unsubscribeRealtime = onSnapshot(alertsQuery, (snapshot) => {
           const docs = [];

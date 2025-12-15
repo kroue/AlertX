@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AlertTriangle, Bell, Send, AlertCircle, CheckCircle2, X, FileText, History, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from './firebase-config';
 import firebaseConfig from './firebase-config';
+import { getFirestore, collection, query, orderBy, limit, onSnapshot, where } from 'firebase/firestore';
 import './controlcenter.css';
 
 export default function ControlCenter() {
@@ -25,51 +26,94 @@ export default function ControlCenter() {
   const [alerts, setAlerts] = useState([]);
   const [warnings, setWarnings] = useState([]);
   const [loading, setLoading] = useState(false);
+  const unsubscribeRef = useRef([]);
 
   useEffect(() => {
-    fetchReports();
-    fetchHistory();
-    const interval = setInterval(() => {
-      fetchReports();
-      fetchHistory();
-    }, 30000); // Refresh every 30 seconds
-    return () => clearInterval(interval);
+    const db = getFirestore();
+    
+    // Realtime listener for incidents (limit to 50 most recent)
+    const incidentsQuery = query(
+      collection(db, 'incidents'),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    );
+    
+    const unsubIncidents = onSnapshot(incidentsQuery, (snapshot) => {
+      const parsed = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          incidentType: data.incidentType || '',
+          description: data.description || '',
+          locationText: data.locationText || '',
+          urgent: data.urgent || false,
+          reporter: data.reporter || 'Unknown',
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+          zone: data.zone || null,
+          latitude: data.latitude || null,
+          longitude: data.longitude || null,
+          photoUrl: data.photoUrl || null,
+          mapImageUrl: data.mapImageUrl || null,
+          is_read: data.is_read || false,
+        };
+      });
+      setReports(parsed);
+      const unreadCount = parsed.filter(r => !r.is_read).length;
+      setReportCount(unreadCount);
+    });
+    
+    // Realtime listener for alerts (limit to 20 most recent)
+    const alertsQuery = query(
+      collection(db, 'alerts'),
+      orderBy('createdAt', 'desc'),
+      limit(20)
+    );
+    
+    const unsubAlerts = onSnapshot(alertsQuery, (snapshot) => {
+      const parsed = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          type: data.type || 'emergency',
+          message: data.message || '',
+          zones: data.zones || [],
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+          sentBy: data.sentBy || 'System',
+          mapImageUrl: data.mapImageUrl || null,
+        };
+      });
+      setAlerts(parsed);
+    });
+    
+    // Realtime listener for warnings (limit to 20 most recent)
+    const warningsQuery = query(
+      collection(db, 'warnings'),
+      orderBy('createdAt', 'desc'),
+      limit(20)
+    );
+    
+    const unsubWarnings = onSnapshot(warningsQuery, (snapshot) => {
+      const parsed = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          type: data.type || 'warning',
+          message: data.message || '',
+          zones: data.zones || [],
+          createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+          sentBy: data.sentBy || 'System',
+          mapImageUrl: data.mapImageUrl || null,
+        };
+      });
+      setWarnings(parsed);
+    });
+    
+    unsubscribeRef.current = [unsubIncidents, unsubAlerts, unsubWarnings];
+    
+    return () => {
+      unsubscribeRef.current.forEach(unsub => unsub());
+    };
   }, []);
-
-  const fetchReports = async () => {
-    try {
-      const base = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents`;
-      const url = `${base}/incidents?key=${firebaseConfig.apiKey}`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        const incidentDocs = data.documents || [];
-        const parsed = incidentDocs.map(doc => {
-          const fields = doc.fields || {};
-          return {
-            id: doc.name.split('/').pop(),
-            incidentType: fields.incidentType?.stringValue || '',
-            description: fields.description?.stringValue || '',
-            locationText: fields.locationText?.stringValue || '',
-            urgent: fields.urgent?.booleanValue || false,
-            reporter: fields.reporter?.stringValue || 'Unknown',
-            createdAt: fields.createdAt?.timestampValue || '',
-            zone: fields.zone?.integerValue || null,
-            latitude: fields.latitude?.doubleValue || null,
-            longitude: fields.longitude?.doubleValue || null,
-            photoUrl: fields.photoUrl?.stringValue || null,
-            mapImageUrl: fields.mapImageUrl?.stringValue || null,
-            is_read: fields.is_read?.booleanValue || false,
-          };
-        }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        setReports(parsed);
-        const unreadCount = parsed.filter(r => !r.is_read).length;
-        setReportCount(unreadCount);
-      }
-    } catch (error) {
-      console.error('Error fetching reports:', error);
-    }
-  };
 
   const markReportAsRead = async (reportId) => {
     try {
@@ -114,72 +158,6 @@ export default function ControlCenter() {
       }
     } catch (error) {
       console.error('Error marking report as read:', error);
-    }
-  };
-
-  const fetchHistory = async () => {
-    try {
-      const base = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents`;
-      
-      // Fetch alerts
-      const alertsUrl = `${base}/alerts?key=${firebaseConfig.apiKey}`;
-      console.log('Fetching alerts from:', alertsUrl);
-      const alertsRes = await fetch(alertsUrl);
-      console.log('Alerts response status:', alertsRes.status);
-      if (alertsRes.ok) {
-        const data = await alertsRes.json();
-        console.log('Alerts data:', data);
-        const alertDocs = data.documents || [];
-        console.log('Alert documents count:', alertDocs.length);
-        const parsed = alertDocs.map(doc => {
-          const fields = doc.fields || {};
-          console.log('Parsing alert doc:', doc.name, fields);
-          return {
-            id: doc.name.split('/').pop(),
-            type: fields.type?.stringValue || 'emergency',
-            message: fields.message?.stringValue || '',
-            zones: fields.zones?.arrayValue?.values?.map(v => v.integerValue || v.stringValue) || [],
-            createdAt: fields.createdAt?.timestampValue || '',
-            sentBy: fields.sentBy?.stringValue || 'System',
-            mapImageUrl: fields.mapImageUrl?.stringValue || null,
-          };
-        }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        console.log('Parsed alerts:', parsed);
-        setAlerts(parsed);
-      } else {
-        console.error('Failed to fetch alerts:', await alertsRes.text());
-      }
-
-      // Fetch warnings
-      const warningsUrl = `${base}/warnings?key=${firebaseConfig.apiKey}`;
-      console.log('Fetching warnings from:', warningsUrl);
-      const warningsRes = await fetch(warningsUrl);
-      console.log('Warnings response status:', warningsRes.status);
-      if (warningsRes.ok) {
-        const data = await warningsRes.json();
-        console.log('Warnings data:', data);
-        const warningDocs = data.documents || [];
-        console.log('Warning documents count:', warningDocs.length);
-        const parsed = warningDocs.map(doc => {
-          const fields = doc.fields || {};
-          console.log('Parsing warning doc:', doc.name, fields);
-          return {
-            id: doc.name.split('/').pop(),
-            type: fields.type?.stringValue || 'warning',
-            message: fields.message?.stringValue || '',
-            zones: fields.zones?.arrayValue?.values?.map(v => v.integerValue || v.stringValue) || [],
-            createdAt: fields.createdAt?.timestampValue || '',
-            sentBy: fields.sentBy?.stringValue || 'System',
-            mapImageUrl: fields.mapImageUrl?.stringValue || null,
-          };
-        }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        console.log('Parsed warnings:', parsed);
-        setWarnings(parsed);
-      } else {
-        console.error('Failed to fetch warnings:', await warningsRes.text());
-      }
-    } catch (error) {
-      console.error('Error fetching history:', error);
     }
   };
 

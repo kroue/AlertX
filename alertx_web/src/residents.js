@@ -4,6 +4,11 @@ import { Users, Search, Filter, ArrowLeft } from 'lucide-react';
 import firebaseConfig from './firebase-config';
 import './residents.css';
 
+// Cache residents data with timestamp
+let residentsCache = null;
+let cacheTimestamp = null;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
 export default function Residents() {
   const navigate = useNavigate();
   const [residents, setResidents] = useState([]);
@@ -13,7 +18,15 @@ export default function Residents() {
   const [selectedZone, setSelectedZone] = useState('all');
 
   useEffect(() => {
-    fetchResidents();
+    // Use cache if available and not expired
+    const now = Date.now();
+    if (residentsCache && cacheTimestamp && (now - cacheTimestamp) < CACHE_DURATION) {
+      setResidents(residentsCache);
+      setFilteredResidents(residentsCache);
+      setLoading(false);
+    } else {
+      fetchResidents();
+    }
   }, []);
 
   useEffect(() => {
@@ -54,6 +67,9 @@ export default function Residents() {
           });
           setResidents(residentsList);
           setFilteredResidents(residentsList);
+          // Cache the data
+          residentsCache = residentsList;
+          cacheTimestamp = Date.now();
         }
       }
     } catch (error) {
