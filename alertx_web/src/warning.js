@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AlertCircle, Plus, X, Send, ArrowLeft, MapPin, CheckCircle2, ChevronDown } from 'lucide-react';
+import { AlertCircle, Send, ArrowLeft, MapPin, CheckCircle2 } from 'lucide-react';
 import './controlcenter.css';
 import { useNavigate } from 'react-router-dom';
 import Map from './Map';
@@ -105,7 +105,7 @@ export default function WarningPage() {
         }
       }
       
-      const warningDoc = await addDoc(collection(db, 'warnings'), {
+      await addDoc(collection(db, 'warnings'), {
         type: warningType,
         zones: selectedZones,
         message,

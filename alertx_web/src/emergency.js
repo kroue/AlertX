@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AlertTriangle, Plus, X, Send, ArrowLeft, MapPin, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, Send, ArrowLeft, MapPin, CheckCircle2 } from 'lucide-react';
 import './controlcenter.css';
 import Map from './Map';
 import MapGoogle from './MapGoogle';
@@ -20,7 +20,6 @@ export default function EmergencyAlertPage() {
 
   const db = getFirestore();
 
-  const defaultTypes = ['Flood'];
   const zones = ['Zone 1', 'Zone 2', 'Zone 3', 'Zone 4'];
 
   // Zone center coordinates based on the map image
@@ -125,7 +124,7 @@ export default function EmergencyAlertPage() {
       }
       
       // create alert document in Firestore so backend/clients can broadcast
-      const alertDoc = await addDoc(collection(db, 'alerts'), {
+      await addDoc(collection(db, 'alerts'), {
         type: emergencyType,
         zones: selectedZones,
         message,
@@ -155,8 +154,6 @@ export default function EmergencyAlertPage() {
       setSending(false);
     }
   };
-
-  const allTypes = [...defaultTypes];
 
   // auto-generate the emergency message when zones or type change
   useEffect(() => {

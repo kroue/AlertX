@@ -94,13 +94,6 @@ export default function MapGoogle({ markers = [], setMarkers = () => {}, center 
     }
   };
 
-  const clearSavedPolygon = () => {
-    overlaysRef.current.forEach(o => { try { o.setMap(null); } catch (e) {} });
-    overlaysRef.current = [];
-    try { localStorage.removeItem('brgy26-polygon'); } catch (e) {}
-    if (mapRef.current) mapRef.current.setOptions({ restriction: null });
-  };
-
   if (!isLoaded) return <div className="cc-map-container">Loading map...</div>;
   if (loadError) return <div className="cc-map-container">Map failed to load</div>;
 

@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth } from './firebase-config';
 import firebaseConfig from './firebase-config';
-import { getFirestore, collection, query, orderBy, limit, onSnapshot, where } from 'firebase/firestore';
+import { getFirestore, collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import './controlcenter.css';
 
 export default function ControlCenter() {
@@ -25,7 +25,6 @@ export default function ControlCenter() {
   const [reportCount, setReportCount] = useState(0);
   const [alerts, setAlerts] = useState([]);
   const [warnings, setWarnings] = useState([]);
-  const [loading, setLoading] = useState(false);
   const unsubscribeRef = useRef([]);
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Users, Search, Filter, ArrowLeft } from 'lucide-react';
 import firebaseConfig from './firebase-config';
@@ -29,9 +29,34 @@ export default function Residents() {
     }
   }, []);
 
+  const filterResidents = useCallback(() => {
+    let filtered = [...residents];
+
+    // Filter by zone
+    if (selectedZone !== 'all') {
+      filtered = filtered.filter(resident =>
+        String(resident.zone) === String(selectedZone)
+      );
+    }
+
+    // Filter by search term
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(resident =>
+        resident.name.toLowerCase().includes(term) ||
+        resident.email.toLowerCase().includes(term) ||
+        resident.username.toLowerCase().includes(term) ||
+        (resident.address && resident.address.toLowerCase().includes(term)) ||
+        (resident.phoneNumber && resident.phoneNumber.includes(term))
+      );
+    }
+
+    setFilteredResidents(filtered);
+  }, [residents, searchTerm, selectedZone]);
+
   useEffect(() => {
     filterResidents();
-  }, [searchTerm, selectedZone, residents]);
+  }, [filterResidents]);
 
   const fetchResidents = async () => {
     try {
@@ -77,31 +102,6 @@ export default function Residents() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const filterResidents = () => {
-    let filtered = [...residents];
-
-    // Filter by zone
-    if (selectedZone !== 'all') {
-      filtered = filtered.filter(resident => 
-        String(resident.zone) === String(selectedZone)
-      );
-    }
-
-    // Filter by search term
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(resident =>
-        resident.name.toLowerCase().includes(term) ||
-        resident.email.toLowerCase().includes(term) ||
-        resident.username.toLowerCase().includes(term) ||
-        (resident.address && resident.address.toLowerCase().includes(term)) ||
-        (resident.phoneNumber && resident.phoneNumber.includes(term))
-      );
-    }
-
-    setFilteredResidents(filtered);
   };
 
   return (
